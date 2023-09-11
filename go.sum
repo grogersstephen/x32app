@@ -169,6 +169,8 @@ github.com/gopherjs/gopherjs v1.17.2 h1:fQnZVsXk8uxXIStYb0N4bGk7jeyTalG/wsZjQ25d
 github.com/gopherjs/gopherjs v1.17.2/go.mod h1:pRRIvn/QzFLrKfvEz3qUuEhtE/zLCWfreZ6J5gM2i+k=
 github.com/goxjs/gl v0.0.0-20210104184919-e3fafc6f8f2a/go.mod h1:dy/f2gjY09hwVfIyATps4G2ai7/hLwLkc5TrPqONuXY=
 github.com/goxjs/glfw v0.0.0-20191126052801-d2efb5f20838/go.mod h1:oS8P8gVOT4ywTcjV6wZlOU4GuVFQ8F5328KY3MJ79CY=
+github.com/grogersstephen/x32comm v0.0.0-20230902202654-c16f8a2ec4ae h1:w9xsjhijkQQ/LBlyU30yoK+RK+dG2kK9pLtfptKBdUE=
+github.com/grogersstephen/x32comm v0.0.0-20230902202654-c16f8a2ec4ae/go.mod h1:0OrhCNnl+1SFqKZqs71E6CB7dporypVYK2ppC6ofJ20=
 github.com/grpc-ecosystem/grpc-gateway v1.16.0/go.mod h1:BDjrQk3hbvj6Nolgz8mAMFbcEtjT1g+wF4CSlocrBnw=
 github.com/hashicorp/consul/api v1.1.0/go.mod h1:VmuI/Lkw1nC05EYQWNKwWGbkg+FbDBtguAZLlVdkD9Q=
 github.com/hashicorp/consul/sdk v0.1.1/go.mod h1:VKf9jXwCTEY1QZP2MOLRhb5i/I/ssyNV1vwHyQBF0x8=

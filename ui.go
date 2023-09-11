@@ -3,8 +3,9 @@ package main
 import (
 	"image/color"
 
-	fyne "fyne.io/fyne/v2/"
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
+	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -18,17 +19,17 @@ type buttonLine struct {
 	entry  *widget.Entry
 }
 
-func setupButtonLine(buttonS string, f func(), entryS string) buttonLine {
+func setupButtonLine(buttonS string, f func(), entryText, entryPlaceholder string) buttonLine {
 	var bl buttonLine
 	bl.button = widget.NewButton(buttonS, f)
-	bl.entry = setupEntry(entryS)
+	bl.entry = setupEntry(entryText, entryPlaceholder)
 	return bl
 }
 
-func setupLine(labelS string, entryS string) line {
+func setupLine(labelS, entryText, entryPlaceholder string) line {
 	var l line
 	l.label = setupLabel(labelS)
-	l.entry = setupEntry(entryS)
+	l.entry = setupEntry(entryText, entryPlaceholder)
 	return l
 }
 
@@ -49,11 +50,29 @@ func setupLabel(s string) *widget.Label {
 	return l
 }
 
-func setupEntry(s string) *widget.Entry {
+func setupEntry(s, p string) *widget.Entry {
 	e := &widget.Entry{}
 	e.TextStyle.Monospace = true
-	if len(s) > 0 {
+	switch {
+	case len(s) > 0:
 		e.SetText(s)
+	case len(p) > 0:
+		e.SetPlaceHolder(p)
 	}
 	return e
+}
+
+type console struct {
+	scroller *container.Scroll
+	label    *widget.Label
+}
+
+func (c *console) log(text string) {
+	c.label.SetText(c.label.Text + "\n" + text)
+	c.scroller.ScrollToBottom()
+}
+
+func (c *console) logf(text string) {
+	c.label.SetText(c.label.Text + text)
+	c.scroller.ScrollToBottom()
 }
