@@ -4,7 +4,7 @@ go 1.21
 
 require (
 	fyne.io/fyne/v2 v2.4.0
-	github.com/grogersstephen/x32comm v0.0.0-20230902202654-c16f8a2ec4ae
+	golang.org/x/sync v0.1.0
 )
 
 require (
