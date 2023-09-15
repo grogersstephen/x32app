@@ -2,6 +2,7 @@ package main
 
 import (
 	"image/color"
+	"log"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -62,17 +63,58 @@ func setupEntry(s, p string) *widget.Entry {
 	return e
 }
 
+func setupStatusLine(s string) statusLine {
+	var status statusLine
+	status.label = setupLabel(s)
+	status.msg = make(chan string, 1)
+	return status
+}
+
 type console struct {
 	scroller *container.Scroll
 	label    *widget.Label
+	log      chan string
 }
 
-func (c *console) log(text string) {
-	c.label.SetText(c.label.Text + "\n" + text)
-	c.scroller.ScrollToBottom()
+func setupConsole(s string) console {
+	var c console
+	c.label = setupLabel("")
+	c.scroller = container.NewVScroll(c.label)
+	c.log = make(chan string, 1)
+	return c
+}
+
+func (c *console) monitor() {
+	log.Println("console.monitor() running")
+	go func() {
+		log.Println("console.monitor() goroutine")
+		for {
+			log.Println("console.monitor() for loop")
+			message := <-c.log
+			c.label.SetText(c.label.Text + "\n" + message)
+			c.scroller.ScrollToBottom()
+		}
+	}()
 }
 
 func (c *console) logf(text string) {
 	c.label.SetText(c.label.Text + text)
 	c.scroller.ScrollToBottom()
+}
+
+type statusLine struct {
+	label *widget.Label
+	msg   chan string
+}
+
+func (s *statusLine) monitor() {
+	log.Println("statusLine.monitor() running")
+	go func() {
+		log.Println("statusLine.monitor() goroutine")
+		for {
+			log.Println("statusLine.monitor() for loop")
+			message := <-s.msg
+			s.label.SetText(message)
+		}
+	}()
 }

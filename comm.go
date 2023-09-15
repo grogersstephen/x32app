@@ -5,8 +5,10 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/grogersstephen/x32app/osc"
@@ -15,43 +17,63 @@ import (
 // All levels will be calculated in terms of FADER_RESOLUTION
 var FADER_RESOLUTION float32 = 1024
 
-func updateFaderResolution(newValue string) (msg string) {
+func updateFaderResolution(newValue string) error {
 	// Check if FADER_RESOLUTION has changed
-	// If it's the same as the default, return
 	faderResText := strings.TrimSpace(newValue)
-	if faderResText == "1024" {
-		return msg
-	}
 	faderResInt, err := strconv.Atoi(faderResText)
 	if err != nil {
-		return fmt.Sprintf("cannot parse fader resolution into int\nfader resolution unchanged")
+		return fmt.Errorf("cannot parse fader resolution into int: fader resolution unchanged")
 	}
 	FADER_RESOLUTION = float32(faderResInt)
-	return fmt.Sprintf("fader resolution updated to %d", faderResInt)
+	return nil
 }
-func writeLAddr(addr string) {
-	App.Preferences().SetString("LAddr", addr)
-}
-func writeRAddr(addr string) {
-	App.Preferences().SetString("RAddr", addr)
-}
-func getLAddr() string {
-	return App.Preferences().String("LAddr")
-}
-func getRAddr() string {
-	return App.Preferences().String("RAddr")
+
+func isErrorAddressAlreadyInUse(err error) bool {
+	errOpError, ok := err.(*net.OpError)
+	if !ok {
+		return false
+	}
+	errSyscallError, ok := errOpError.Err.(*os.SyscallError)
+	if !ok {
+		return false
+	}
+	errErrno, ok := errSyscallError.Err.(syscall.Errno)
+	if !ok {
+		return false
+	}
+	if errErrno == syscall.EADDRINUSE {
+		return true
+	}
+	const WSAEADDRINUSE = 10048
+	if runtime.GOOS == "windows" && errErrno == WSAEADDRINUSE {
+		return true
+	}
+	return false
 }
 
 func connect() (conn *net.UDPConn, err error) {
-	raddr := getRAddr()
+	raddr := App.Preferences().String("RAddr")
 	if raddr == "" {
 		return conn, fmt.Errorf("remote addr not set")
 	}
-	laddr := getLAddr()
+	laddr := App.Preferences().String("LAddr")
 	if laddr == "" {
 		return conn, fmt.Errorf("local addr not set")
 	}
-	conn, err = osc.Dial(laddr, raddr)
+	portS := strings.Split(laddr, ":")[1]
+	port, err := strconv.Atoi(portS)
+	if err != nil {
+		return conn, err
+	}
+	for {
+		conn, err = osc.Dial(laddr, raddr)
+		// If the addr is already in use, we'll keep the for loop going
+		if !isErrorAddressAlreadyInUse(err) {
+			break
+		}
+		port += 1
+		laddr = fmt.Sprintf(":%d", port)
+	}
 	return conn, err
 }
 

@@ -24,11 +24,11 @@ type homeScreen struct {
 	dcaBank         []*widget.Button
 	auxBank         []*widget.Button
 	duration        line
-	levelLabel      *widget.Label
+	levelLabel      statusLine
 	fadeTo          buttonLine
 	fadeOutB        *widget.Button
 	closeB          *widget.Button
-	status          *widget.Label
+	status          statusLine
 	console         console
 	selectedChannel int
 }
@@ -41,28 +41,34 @@ func (h *homeScreen) setupDCABank() {
 		button := widget.NewButton(
 			fmt.Sprintf("DCA%d", i),
 			func() {
-				var value float32
-				var ok bool
 				h.selectedChannel = 32 + dca
-				// Make connection
-				conn, err := connect()
-				defer conn.Close()
-				if err != nil {
-					value = -1
-				} else {
-					osc.SendString(conn, fmt.Sprintf("/dca/%d/fader~~~~", dca))
+				go func(dca int, levelC chan string, consoleC chan string) {
+					var value float32
+					var ok bool
+					// Make connection
+					conn, err := connect()
+					if err != nil {
+						consoleC <- err.Error()
+						return
+					}
+					defer conn.Close()
+					err = osc.SendString(conn, fmt.Sprintf("/dca/%d/fader~~~~", dca))
+					if err != nil {
+						consoleC <- err.Error()
+						return
+					}
 					msg, err := osc.Listen(conn, 5*time.Second)
 					if err != nil {
 						value = -1
+						return
 					}
 					v := msg.DecodeArgument(0)
 					value, ok = v.(float32)
 					if !ok {
 						value = -1
 					}
-				}
-				h.levelLabel.SetText(
-					fmt.Sprintf("DCA %d : %.2f\n", h.selectedChannel-32, value))
+					levelC <- fmt.Sprintf("DCA %d : %.2f\n", dca, value)
+				}(dca, h.levelLabel.msg, h.console.log)
 			})
 		h.dcaBank[i] = button
 	}
@@ -75,29 +81,31 @@ func (h *homeScreen) setupChannelBank() {
 		button := widget.NewButton(
 			fmt.Sprintf("%02d", i),
 			func() {
-				var value float32
-				var ok bool
 				h.selectedChannel = ch
-				// Make Connection
-				conn, err := connect()
-				defer conn.Close()
-				if err != nil {
-					value = -1
-				} else {
+				go func(ch int, levelC, consoleC chan string) {
+					var value float32
+					var ok bool
+					// Make Connection
+					conn, err := connect()
+					if err != nil {
+						consoleC <- err.Error()
+						return
+					}
+					defer conn.Close()
+
 					osc.SendString(conn, fmt.Sprintf("/ch/%02d/mix/fader~~~~", ch))
 					msg, err := osc.Listen(conn, 5*time.Second)
 					if err != nil {
 						value = -1
+						return
 					}
-					//value, err = getChFader(conn, ch)
 					v := msg.DecodeArgument(0)
 					value, ok = v.(float32)
 					if !ok {
 						value = -1
 					}
-				}
-				h.levelLabel.SetText(
-					fmt.Sprintf("Channel %d : %.2f\n", h.selectedChannel, value))
+					levelC <- fmt.Sprintf("Channel %d : %.2f\n", h.selectedChannel, value)
+				}(ch, h.levelLabel.msg, h.console.log)
 			})
 		h.channelBank[i] = button
 	}
@@ -106,21 +114,31 @@ func (h *homeScreen) setupChannelBank() {
 func (h *homeScreen) setup() {
 	h.title = setupText("X32 App", color.White, 16)
 	h.connectionInfo = setupLabel("")
-	h.lAddrEntry = setupLine("local addr:", getLAddr(), "Set local address ip:port")
-	h.rAddrEntry = setupLine("remote addr:", getRAddr(), "Set remote address ip:port")
+	h.lAddrEntry = setupLine(
+		"local addr:",
+		App.Preferences().String("LAddr"),
+		"Set local address ip:port")
+	h.rAddrEntry = setupLine(
+		"remote addr:",
+		App.Preferences().String("RAddr"),
+		"Set remote address ip:port")
 	h.faderResolution = setupLine(
 		"fader resolution:",
 		fmt.Sprintf("%d", int(FADER_RESOLUTION)),
 		"Set fader resolution")
 	h.connectB = widget.NewButton("Connect", h.connectBPress)
 	h.duration = setupLine("Duration: ", "2s", "")
-	h.levelLabel = setupLabel("")
+	h.levelLabel = setupStatusLine("")
+	h.levelLabel.monitor()
 	h.fadeTo = setupButtonLine("\nFade To(0.00 to 1.00): \n", h.fadeToPress, "1", "")
 	h.fadeOutB = widget.NewButton("\nFade Out\n", h.fadeOutPress)
 	h.closeB = widget.NewButton("close", h.closeAppPress)
-	h.status = setupLabel("")
-	h.console.label = setupLabel("")
-	h.console.scroller = container.NewVScroll(h.console.label)
+	h.status = setupStatusLine("Application Started")
+	// Start the status monitor
+	h.status.monitor()
+	h.console = setupConsole("")
+	// Start the console monitor
+	h.console.monitor()
 	h.setupChannelBank()
 	h.setupDCABank()
 
@@ -130,7 +148,7 @@ func (h *homeScreen) setup() {
 }
 
 func (h *homeScreen) loadUI(win fyne.Window) {
-	h.console.log("")
+	h.console.log <- ""
 	content :=
 		container.New(layout.NewVBoxLayout(),
 			h.title,
@@ -141,7 +159,7 @@ func (h *homeScreen) loadUI(win fyne.Window) {
 			),
 			container.NewGridWithColumns(1,
 				h.connectB,
-				h.status,
+				h.status.label,
 			),
 			container.NewGridWithColumns(8,
 				h.channelBank[1], h.channelBank[2], h.channelBank[3], h.channelBank[4],
@@ -156,7 +174,7 @@ func (h *homeScreen) loadUI(win fyne.Window) {
 				//h.auxBank[4], h.auxBank[5], h.auxBank[6],
 			),
 			container.NewGridWithColumns(1,
-				h.levelLabel,
+				h.levelLabel.label,
 				container.NewGridWithColumns(2,
 					h.duration.label,
 					h.duration.entry,
