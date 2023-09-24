@@ -9,7 +9,8 @@ import (
 )
 
 func Dial(localAddr, remoteAddr string) (conn *net.UDPConn, err error) {
-	// Give localAddr and remoteAddr in the form: "ip:port"
+	// Takes local and remote addresses and returns a pointer to a UDPConn
+	//     localAddr and remoteAddr should be provided in the form: "ip:port"
 	local, err := net.ResolveUDPAddr("udp", localAddr)
 	if err != nil {
 		return conn, err
@@ -23,6 +24,9 @@ func Dial(localAddr, remoteAddr string) (conn *net.UDPConn, err error) {
 }
 
 func Inquire(conn *net.UDPConn, msg Message) (a []any, err error) {
+	// Takes a pointer to a UDPConn and an osc Message
+	//   Sends the message to a server, and listens for a response
+	//   Returns the data in the response as a slice of any/interface
 	// Send message
 	err = Send(conn, msg)
 	if err != nil {
@@ -40,6 +44,8 @@ func Inquire(conn *net.UDPConn, msg Message) (a []any, err error) {
 }
 
 func SendString(conn *net.UDPConn, s string) error {
+	// Takes a pointer to a UDPConn and a string and writes the string to the UDPConn
+	//     replacing any '~' characters with zero bytes
 	var sb strings.Builder
 	conn.SetWriteDeadline(time.Now().Add(4 * time.Second))
 	for i := range s {
@@ -71,9 +77,10 @@ func Send(conn *net.UDPConn, msg Message) error {
 }
 
 func Listen(conn *net.UDPConn, timeout time.Duration) (msg *Message, err error) {
-	// Set the deadline from our timeout
+	// Act as a server and listen for an incoming OSC message
+	//     Set the deadline from our timeout
 	conn.SetReadDeadline(time.Now().Add(timeout))
-	// Make a byt of length 256 and read into it
+	// Make a []byte of length 256 and read into it
 	byt := make([]byte, 256)
 	_, err = conn.Read(byt)
 	if err != nil {

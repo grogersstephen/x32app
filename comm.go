@@ -153,7 +153,6 @@ func makeFade(conn *net.UDPConn, channel int, start, stop float32, fadeDuration 
 		// send the message
 		msg := osc.NewMessage(getFaderPath(channel))
 		err := msg.Add(v)
-		fmt.Fprintf(os.Stderr, "Msg: %v\n", msg.String())
 		if err != nil {
 			return err
 		}

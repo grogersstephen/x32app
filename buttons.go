@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"strconv"
 	"time"
@@ -24,13 +25,13 @@ func (h *homeScreen) connectBPress() {
 	if raddr != "" {
 		App.Preferences().SetString("RAddr", raddr)
 	}
-	go func(console chan string, status chan string) {
+	go func() {
 		conn, err := connect()
 		defer conn.Close()
 		if err != nil {
-			console <- err.Error()
+			h.console.log <- err.Error()
 		}
-		console <- fmt.Sprintf("Remote: %v\nLocal: %v\n", conn.RemoteAddr().String(), conn.LocalAddr().String())
+		h.console.log <- fmt.Sprintf("Remote: %v\nLocal: %v\n", conn.RemoteAddr().String(), conn.LocalAddr().String())
 		ss, err := getStatus(conn)
 		var statusS string
 		if err != nil {
@@ -39,9 +40,9 @@ func (h *homeScreen) connectBPress() {
 			for j := range ss {
 				statusS += ss[j] + "   "
 			}
-			status <- statusS
+			h.status.msg <- statusS
 		}
-	}(h.console.log, h.status.msg)
+	}()
 }
 
 func (h *homeScreen) fadeToPress() {
@@ -56,22 +57,43 @@ func (h *homeScreen) fadeToPress() {
 	if err != nil {
 		h.console.log <- err.Error()
 	}
-	go func(selectedChannel int, duration time.Duration, targetF float32, console chan string) {
+	go func() {
+		done := false
+		doneC := make(chan bool)
+		chLabel := fmt.Sprintf("Channel %d", h.selectedChannel)
+		if h.selectedChannel > 32 {
+			chLabel = fmt.Sprintf("DCA %d", h.selectedChannel-32)
+		}
 		// Make connection
-		fmt.Fprintf(os.Stderr, "about to make connection\n")
 		conn, err := connect()
 		if err != nil {
-			console <- fmt.Sprintf("did not make connection!\n%v", err.Error())
+			h.console.log <- fmt.Sprintf("did not make connection!\n%v", err.Error())
 			return
 		}
-		console <- "made connection!"
-		// Call fadeTo() function
-		err = fadeTo(conn, selectedChannel, targetF, duration)
 		defer conn.Close()
-		if err != nil {
-			console <- err.Error()
+		h.console.log <- "made connection!"
+		// Call fadeTo() function
+		go func() {
+			err = fadeTo(conn, h.selectedChannel, targetF, duration)
+			if err != nil {
+				h.console.log <- err.Error()
+			}
+			doneC <- true
+		}()
+		for !done {
+			currentLevel, err := getChFader(conn, h.selectedChannel)
+			if err != nil {
+				continue
+			}
+			h.levelLabel.msg <- fmt.Sprintf("%s : %.2f\n", chLabel, currentLevel)
+			select {
+			case done = <-doneC:
+				log.Printf("done")
+			default:
+				log.Printf("nah")
+			}
 		}
-	}(h.selectedChannel, duration, targetF, h.console.log)
+	}()
 }
 
 func (h *homeScreen) fadeOutPress() {
@@ -80,20 +102,42 @@ func (h *homeScreen) fadeOutPress() {
 	if err != nil {
 		h.console.log <- err.Error()
 	}
-	go func(selectedChannel int, console chan string) {
+	go func() {
+		done := false
+		doneC := make(chan bool)
+		chLabel := fmt.Sprintf("Channel %d", h.selectedChannel)
+		if h.selectedChannel > 32 {
+			chLabel = fmt.Sprintf("DCA %d", h.selectedChannel-32)
+		}
 		// Make connection
 		conn, err := connect()
 		if err != nil {
-			console <- err.Error()
+			h.console.log <- err.Error()
 			return
 		}
-		// Call fadeTo() to 0
-		err = fadeTo(conn, selectedChannel, 0, duration)
 		defer conn.Close()
-		if err != nil {
-			console <- err.Error()
+		// Call fadeTo() to 0
+		go func() {
+			err = fadeTo(conn, h.selectedChannel, 0, duration)
+			if err != nil {
+				h.console.log <- err.Error()
+			}
+			doneC <- true
+		}()
+		for !done {
+			currentLevel, err := getChFader(conn, h.selectedChannel)
+			if err != nil {
+				continue
+			}
+			h.levelLabel.msg <- fmt.Sprintf("%s : %.2f\n", chLabel, currentLevel)
+			select {
+			case done = <-doneC:
+				log.Printf("done")
+			default:
+				log.Printf("nah")
+			}
 		}
-	}(h.selectedChannel, h.console.log)
+	}()
 }
 
 func (h *homeScreen) closeAppPress() {
