@@ -4,97 +4,73 @@ import (
 	"encoding/binary"
 	"math"
 	"net"
-	"strings"
-	"time"
 )
 
-func Dial(localAddr, remoteAddr string) (conn *net.UDPConn, err error) {
-	// Takes local and remote addresses and returns a pointer to a UDPConn
-	//     localAddr and remoteAddr should be provided in the form: "ip:port"
-	local, err := net.ResolveUDPAddr("udp", localAddr)
-	if err != nil {
-		return conn, err
+func Dial(localPort int, remoteAddr string) (conn net.Conn, err error) {
+	// Takes a local port and remote address and returns a net.Conn
+	//     remoteAddr should be provided in the form: "ip:port"
+	dialer := &net.Dialer{
+		LocalAddr: &net.UDPAddr{
+			Port: localPort,
+		},
 	}
-	remote, err := net.ResolveUDPAddr("udp", remoteAddr)
-	if err != nil {
-		return conn, err
-	}
-	conn, err = net.DialUDP("udp", local, remote)
+	conn, err = dialer.Dial("udp", remoteAddr)
 	return conn, err
 }
 
-func Inquire(conn *net.UDPConn, msg Message) (a []any, err error) {
-	// Takes a pointer to a UDPConn and an osc Message
+func Inquire(conn net.Conn, msg Message) (reply Message, err error) {
+	// Takes a Conn and an osc Message
 	//   Sends the message to a server, and listens for a response
 	//   Returns the data in the response as a slice of any/interface
+
 	// Send message
 	err = Send(conn, msg)
 	if err != nil {
-		return a, err
+		return reply, err
 	}
+
 	// Wait for reply
-	reply, err := Listen(conn, 4*time.Second)
+	reply, err = Listen(conn)
 	if err != nil {
-		return a, err
+		return reply, err
 	}
-	for i := range reply.Arguments {
-		a = append(a, reply.DecodeArgument(i))
-	}
-	return a, nil
+	// Decode arguments
+	reply.DecodeArguments()
+	return reply, nil
 }
 
-func SendString(conn *net.UDPConn, s string) error {
-	// Takes a pointer to a UDPConn and a string and writes the string to the UDPConn
-	//     replacing any '~' characters with zero bytes
-	var sb strings.Builder
-	conn.SetWriteDeadline(time.Now().Add(4 * time.Second))
-	for i := range s {
-		if s[i] == '~' {
-			sb.WriteByte(byte(0))
-			continue
-		}
-		sb.WriteByte(s[i])
-	}
-	_, err := conn.Write([]byte(sb.String()))
-	return err
-}
+func Send(conn net.Conn, msg Message) error {
+	// Send an OSC message of type Message to the Conn connection
 
-func Send(conn *net.UDPConn, msg Message) error {
-	// Send an OSC message of type Message to the UDPConn connection
 	// Make the packet from the components if it doesn't already exist
-	if len(msg.Packet) == 0 {
+	if msg.Packet.Len() == 0 {
 		err := msg.MakePacket()
 		if err != nil {
 			return err
 		}
 	}
 
-	// Sends a message using the Conn from net.DialUDP
 	// Write the bytes to the connection
-	conn.SetWriteDeadline(time.Now().Add(4 * time.Second))
-	_, err := conn.Write(msg.Packet)
+	_, err := conn.Write(msg.Packet.Bytes())
 	return err
 }
 
-func Listen(conn *net.UDPConn, timeout time.Duration) (msg *Message, err error) {
+func Listen(conn net.Conn) (msg Message, err error) {
 	// Act as a server and listen for an incoming OSC message
-	//     Set the deadline from our timeout
-	conn.SetReadDeadline(time.Now().Add(timeout))
-	// Make a []byte of length 256 and read into it
-	byt := make([]byte, 256)
+	// Make a []byte of length 512 and read into it
+	byt := make([]byte, 512)
 	_, err = conn.Read(byt)
 	if err != nil {
 		return msg, err
 	}
 
-	// Make message and write to Packet
-	msg = &Message{
-		Packet: byt,
-	}
+	// Write bytes to packet
+	msg.Packet.Write(byt)
 
 	// Parse the []byte in msg.Packet and populate the properties of msg
 	err = msg.ParseMessage()
 
+	// Return msg
 	return msg, err
 }
 

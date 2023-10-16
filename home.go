@@ -3,175 +3,152 @@ package main
 import (
 	"fmt"
 	"image/color"
-	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
-	"github.com/grogersstephen/x32app/osc"
 )
 
 type homeScreen struct {
-	title           *canvas.Text
-	connectionInfo  *widget.Label
-	lAddrEntry      line
-	rAddrEntry      line
-	faderResolution line
-	connectB        *widget.Button
-	channelBank     []*widget.Button
-	dcaBank         []*widget.Button
-	auxBank         []*widget.Button
-	duration        line
-	levelLabel      statusLine
-	fadeTo          buttonLine
-	fadeOutB        *widget.Button
-	closeB          *widget.Button
-	status          statusLine
-	console         console
-	selectedChannel int
+	title       *canvas.Text
+	connectB    *widget.Button
+	channelBank []*widget.Button
+	dcaBank     []*widget.Button
+	auxBank     []*widget.Button
+	duration    line
+	levelLabel  statusLine
+	fadeTo      buttonLine
+	fadeOutB    *widget.Button
+	renameChB   *widget.Button
+	closeB      *widget.Button
+	status      statusLine
+	console     console
+	mixer       *mixer
+	win         fyne.Window
 }
 
 func (h *homeScreen) setupDCABank() {
-	dcaCount := 8
-	h.dcaBank = make([]*widget.Button, dcaCount+1)
-	for i := 1; i <= dcaCount; i++ {
-		dca := i
+	h.dcaBank = make([]*widget.Button, 8)
+	for i := 0; i < 8; i++ {
+		channelID := 72 + i
+		// Create our button which will only change the selected Ch
 		button := widget.NewButton(
-			fmt.Sprintf("DCA%d", i),
+			fmt.Sprintf("DCA%d", i+1),
 			func() {
-				h.selectedChannel = 32 + dca
-				go func(dca int, levelC chan string, consoleC chan string) {
-					var value float32
-					var ok bool
-					// Make connection
-					conn, err := connect()
-					if err != nil {
-						consoleC <- err.Error()
-						return
-					}
-					defer conn.Close()
-					err = osc.SendString(conn, fmt.Sprintf("/dca/%d/fader~~~~", dca))
-					if err != nil {
-						consoleC <- err.Error()
-						return
-					}
-					msg, err := osc.Listen(conn, 5*time.Second)
-					if err != nil {
-						value = -1
-						return
-					}
-					v := msg.DecodeArgument(0)
-					value, ok = v.(float32)
-					if !ok {
-						value = -1
-					}
-					levelC <- fmt.Sprintf("DCA %d : %.2f\n", dca, value)
-				}(dca, h.levelLabel.msg, h.console.log)
-			})
+				h.mixer.selectCh <- channelID
+			},
+		)
+		// Add our button to the bank
 		h.dcaBank[i] = button
 	}
 }
-func (h *homeScreen) setupChannelBank() {
-	channelCount := 32
-	h.channelBank = make([]*widget.Button, channelCount+1)
-	for i := 1; i <= channelCount; i++ {
-		ch := i
-		button := widget.NewButton(
-			fmt.Sprintf("%02d", i),
-			func() {
-				h.selectedChannel = ch
-				go func(ch int, levelC, consoleC chan string) {
-					var value float32
-					var ok bool
-					// Make Connection
-					conn, err := connect()
-					if err != nil {
-						consoleC <- err.Error()
-						return
-					}
-					defer conn.Close()
 
-					osc.SendString(conn, fmt.Sprintf("/ch/%02d/mix/fader~~~~", ch))
-					msg, err := osc.Listen(conn, 5*time.Second)
-					if err != nil {
-						value = -1
-						return
-					}
-					v := msg.DecodeArgument(0)
-					value, ok = v.(float32)
-					if !ok {
-						value = -1
-					}
-					levelC <- fmt.Sprintf("Channel %d : %.2f\n", h.selectedChannel, value)
-				}(ch, h.levelLabel.msg, h.console.log)
-			})
+func (h *homeScreen) setupAUXBank() {
+	h.auxBank = make([]*widget.Button, 8)
+	for i := 0; i < 8; i++ {
+		channelID := 32 + i
+		button := widget.NewButton(
+			fmt.Sprintf("AUX%d", i+1),
+			func() {
+				h.mixer.selectCh <- channelID
+			},
+		)
+		h.auxBank[i] = button
+	}
+}
+
+func (h *homeScreen) setupChannelBank() {
+	h.channelBank = make([]*widget.Button, 32)
+	for i := 0; i < 32; i++ {
+		channelID := i
+		// Create our button which will only change the selected Ch
+		button := widget.NewButton(
+			fmt.Sprintf("%02d", i+1),
+			func() {
+				h.mixer.selectCh <- channelID
+			},
+		)
+		// Add our button to the bank
 		h.channelBank[i] = button
 	}
 }
 
+func (h *homeScreen) selChanMonitor() {
+	// When we receive from selectCh, we'll assign to mixer.selectedCh
+	go func() {
+		for {
+			h.mixer.selectedCh = <-h.mixer.selectCh
+		}
+	}()
+}
+
+// TODO: make settings page
+//     options:
+//          fader resolution
+//
 func (h *homeScreen) setup() {
+	// Set up the title at the top of the screen
 	h.title = setupText("X32 App", color.White, 16)
-	h.connectionInfo = setupLabel("")
-	h.lAddrEntry = setupLine(
-		"local addr:",
-		App.Preferences().String("LAddr"),
-		"Set local address ip:port")
-	h.rAddrEntry = setupLine(
-		"remote addr:",
-		App.Preferences().String("RAddr"),
-		"Set remote address ip:port")
-	h.faderResolution = setupLine(
-		"fader resolution:",
-		fmt.Sprintf("%d", int(FADER_RESOLUTION)),
-		"Set fader resolution")
-	h.connectB = widget.NewButton("Connect", h.connectBPress)
+	// Set up the connect button to load connect screen
+	h.connectB = widget.NewButton("\nConnect\n", h.connectPress)
+	// Set up the duration elements, label and entry
 	h.duration = setupLine("Duration: ", "2s", "")
+	// Set up the levelLabel which will show the fader level of the selected channel
 	h.levelLabel = setupStatusLine("")
-	h.levelLabel.monitor()
+	// Set up Fade To button
 	h.fadeTo = setupButtonLine("\nFade To(0.00 to 1.00): \n", h.fadeToPress, "1", "")
+	// Set up Fade Out button
 	h.fadeOutB = widget.NewButton("\nFade Out\n", h.fadeOutPress)
+	// Set up Rename Ch Button
+	h.renameChB = widget.NewButton("\nRename\n", h.renameChPress)
+	// Set up close button
 	h.closeB = widget.NewButton("close", h.closeAppPress)
+	// Set up status line which will show the X32 information
 	h.status = setupStatusLine("Application Started")
+	// Start the levelLabel monitor to listen for messages
+	h.levelLabel.monitor()
 	// Start the status monitor
 	h.status.monitor()
+	// Setup the console
 	h.console = setupConsole("")
 	// Start the console monitor
 	h.console.monitor()
+	// Set up the mixer with channel, dca, and bus send counts
+	h.mixer = newX32()
+	// Run the level monitor giving it the channel for the levelLabel
+	h.mixer.levelMonitor(h.levelLabel.msg)
+	// Run the selected Channel monitor
+	h.selChanMonitor()
+	// Set up the fader select button banks
 	h.setupChannelBank()
 	h.setupDCABank()
-
-	win := App.NewWindow("Propres Ctrl")
-	h.loadUI(win)
-	win.Show()
+	h.setupAUXBank()
+	// Set up the window and content
+	h.win = App.NewWindow("main")
+	h.win.SetContent(h.getContent())
+	h.win.Show()
 }
 
-func (h *homeScreen) loadUI(win fyne.Window) {
+func (h *homeScreen) getContent() *fyne.Container {
 	h.console.log <- ""
 	content :=
 		container.New(layout.NewVBoxLayout(),
 			h.title,
-			container.NewGridWithColumns(1,
-				container.NewGridWithColumns(2, h.lAddrEntry.label, h.lAddrEntry.entry),
-				container.NewGridWithColumns(2, h.rAddrEntry.label, h.rAddrEntry.entry),
-				container.NewGridWithColumns(2, h.faderResolution.label, h.faderResolution.entry),
-			),
-			container.NewGridWithColumns(1,
-				h.connectB,
-				h.status.label,
+			h.connectB,
+			h.status.label,
+			container.NewGridWithColumns(8,
+				h.channelBank[0], h.channelBank[1], h.channelBank[2], h.channelBank[3],
+				h.channelBank[4], h.channelBank[5], h.channelBank[6], h.channelBank[7],
+				h.channelBank[8], h.channelBank[9], h.channelBank[10], h.channelBank[11],
+				h.channelBank[12], h.channelBank[13], h.channelBank[14], h.channelBank[15],
 			),
 			container.NewGridWithColumns(8,
-				h.channelBank[1], h.channelBank[2], h.channelBank[3], h.channelBank[4],
-				h.channelBank[5], h.channelBank[6], h.channelBank[7], h.channelBank[8],
-				h.channelBank[9], h.channelBank[10], h.channelBank[11], h.channelBank[12],
-				h.channelBank[13], h.channelBank[14], h.channelBank[15], h.channelBank[16],
-			),
-			container.NewGridWithColumns(4,
-				h.dcaBank[1], h.dcaBank[2], h.dcaBank[3], h.dcaBank[4],
-				h.dcaBank[5], h.dcaBank[6], h.dcaBank[7], h.dcaBank[8],
-				//h.auxBank[1], h.auxBank[2], h.auxBank[3],
-				//h.auxBank[4], h.auxBank[5], h.auxBank[6],
+				h.dcaBank[0], h.dcaBank[1], h.dcaBank[2], h.dcaBank[3],
+				h.dcaBank[4], h.dcaBank[5], h.dcaBank[6], h.dcaBank[7],
+				h.auxBank[0], h.auxBank[1], h.auxBank[2], h.auxBank[3],
+				h.auxBank[4], h.auxBank[5], h.auxBank[6], h.auxBank[7],
 			),
 			container.NewGridWithColumns(1,
 				h.levelLabel.label,
@@ -185,10 +162,11 @@ func (h *homeScreen) loadUI(win fyne.Window) {
 				h.fadeTo.entry,
 			),
 			h.fadeOutB,
+			h.renameChB,
 			h.console.scroller,
 			container.NewGridWithColumns(2,
 				layout.NewSpacer(),
 				h.closeB),
 		)
-	win.SetContent(content)
+	return content
 }

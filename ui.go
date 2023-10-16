@@ -2,7 +2,6 @@ package main
 
 import (
 	"image/color"
-	"log"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -85,12 +84,13 @@ func setupConsole(s string) console {
 }
 
 func (c *console) monitor() {
-	log.Println("console.monitor() running")
 	go func() {
-		log.Println("console.monitor() goroutine")
 		for {
-			log.Println("console.monitor() for loop")
 			message := <-c.log
+			if message == "clr" {
+				c.label.SetText("")
+				continue
+			}
 			c.label.SetText(c.label.Text + "\n" + message)
 			c.scroller.ScrollToBottom()
 		}
@@ -108,11 +108,8 @@ type statusLine struct {
 }
 
 func (s *statusLine) monitor() {
-	log.Println("statusLine.monitor() running")
 	go func() {
-		log.Println("statusLine.monitor() goroutine")
 		for {
-			log.Println("statusLine.monitor() for loop")
 			message := <-s.msg
 			s.label.SetText(message)
 		}
