@@ -84,17 +84,15 @@ func setupConsole(s string) console {
 }
 
 func (c *console) monitor() {
-	go func() {
-		for {
-			message := <-c.log
-			if message == "clr" {
-				c.label.SetText("")
-				continue
-			}
-			c.label.SetText(c.label.Text + "\n" + message)
-			c.scroller.ScrollToBottom()
+	for {
+		message := <-c.log
+		if message == "clr" {
+			c.label.SetText("")
+			continue
 		}
-	}()
+		c.label.SetText(c.label.Text + "\n" + message)
+		c.scroller.ScrollToBottom()
+	}
 }
 
 func (c *console) logf(text string) {
@@ -108,10 +106,8 @@ type statusLine struct {
 }
 
 func (s *statusLine) monitor() {
-	go func() {
-		for {
-			message := <-s.msg
-			s.label.SetText(message)
-		}
-	}()
+	for {
+		message := <-s.msg
+		s.label.SetText(message)
+	}
 }

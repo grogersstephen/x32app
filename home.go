@@ -99,13 +99,13 @@ func (h *homeScreen) setup() {
 	// Set up status line which will show the X32 information
 	h.status = setupStatusLine("Application Started")
 	// Start the levelLabel monitor to listen for messages
-	h.levelLabel.monitor()
+	go h.levelLabel.monitor()
 	// Start the status monitor
-	h.status.monitor()
+	go h.status.monitor()
 	// Setup the console
 	h.console = setupConsole("")
 	// Start the console monitor
-	h.console.monitor()
+	go h.console.monitor()
 	// Set up the mixer with channel, dca, and bus send counts
 	h.mixer = newX32()
 	// Run the level monitor giving it the channel for the levelLabel
