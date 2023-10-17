@@ -100,35 +100,33 @@ func establishConnection(localPort int, remoteAddr string, tries int) (conn net.
 
 func (m *mixer) levelMonitor(msg chan string) {
 	// This keeps up with the level of the currently selected channel
-	go func() {
-		// Create a new connection just for the level monitor
-		conn, err := establishConnection(
-			App.Preferences().Int("LevelMonitorPort"),
-			fmt.Sprintf("%s:%d", App.Preferences().String("RAddr"), App.Preferences().Int("RPort")),
-			5)
-		// If a meaningful connection could not be made, abort the monitor
-		if err != nil {
-			log.Printf("could not connect to osc server")
-			return
+	// Create a new connection just for the level monitor
+	conn, err := establishConnection(
+		App.Preferences().Int("LevelMonitorPort"),
+		fmt.Sprintf("%s:%d", App.Preferences().String("RAddr"), App.Preferences().Int("RPort")),
+		5)
+	// If a meaningful connection could not be made, abort the monitor
+	if err != nil {
+		log.Printf("could not connect to osc server")
+		return
+	}
+	active := <-m.toggleLevelMonitor
+	for {
+		// Try to receive from channel
+		select {
+		case active = <-m.toggleLevelMonitor:
+		default:
 		}
-		active := <-m.toggleLevelMonitor
-		for {
-			// Try to receive from channel
-			select {
-			case active = <-m.toggleLevelMonitor:
-			default:
-			}
-			if !active {
-				// If not active, wait to receive signal from channel
-				active = <-m.toggleLevelMonitor
-				continue
-			}
-			level, _ := getFader(conn, m.selectedCh) // ignore the error
-			m.faders[m.selectedCh].level = level
-			msg <- m.faders[m.selectedCh].getLevelMessage()
-			time.Sleep(75 * time.Millisecond)
+		if !active {
+			// If not active, wait to receive signal from channel
+			active = <-m.toggleLevelMonitor
+			continue
 		}
-	}()
+		level, _ := getFader(conn, m.selectedCh) // ignore the error
+		m.faders[m.selectedCh].level = level
+		msg <- m.faders[m.selectedCh].getLevelMessage()
+		time.Sleep(75 * time.Millisecond)
+	}
 }
 
 func (m *mixer) setFaderResolution(newValue string) error {
