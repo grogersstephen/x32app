@@ -49,6 +49,12 @@ func (msg *Message) MakePacket() (err error) {
 			return err
 		}
 	}
+	if len(msg.Arguments) > 0 {
+		zerosToAdd := zeroBytesToAdd(len(msg.Arguments) + 1)
+		for i := 0; i < zerosToAdd; i++ {
+			msg.Packet.WriteByte(0)
+		}
+	}
 
 	// For each argument, write to packet
 	for _, arg := range msg.Arguments {

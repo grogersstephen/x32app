@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"net"
 	"strconv"
 	"strings"
@@ -12,13 +11,17 @@ import (
 )
 
 type mixer struct {
-	name               string
-	faders             []*fader
-	selectedCh         int
-	selectCh           chan int
-	faderResolution    float32
-	toggleLevelMonitor chan bool
-	conn               net.Conn
+	name             string
+	remoteHost       string
+	remotePort       int
+	localPort        int
+	levelMonitorPort int
+	faders           []*fader
+	selectedCh       int
+	selectCh         chan int
+	faderResolution  float32
+	conn             net.Conn
+	levelMonitorConn net.Conn
 }
 
 type fader struct {
@@ -41,13 +44,15 @@ func newX32() *mixer {
 	//     72 - 79
 	faderCount := 80
 	m := &mixer{
-		name:               "Behringer M32",
-		faders:             make([]*fader, faderCount),
-		selectedCh:         0,
-		selectCh:           make(chan int, 1),
-		faderResolution:    1024,
-		toggleLevelMonitor: make(chan bool, 1),
-		conn:               nil,
+		name:             "Behringer M32",
+		remotePort:       10023,
+		localPort:        10023,
+		levelMonitorPort: 10024,
+		faders:           make([]*fader, faderCount),
+		selectedCh:       0,
+		selectCh:         make(chan int, 1),
+		faderResolution:  1024,
+		conn:             nil,
 	}
 	channelIDMap := map[int]string{
 		0:  "channel",
@@ -108,36 +113,25 @@ func (m *mixer) selChanMonitor() {
 func (m *mixer) levelMonitor(msg chan string) {
 	// This keeps up with the level of the currently selected channel
 	// Create a new connection just for the level monitor
-	conn, err := establishConnection(
-		App.Preferences().Int("LevelMonitorPort"),
-		fmt.Sprintf("%s:%d", App.Preferences().String("RAddr"), App.Preferences().Int("RPort")),
+	// Wait until we start a main connection
+	var err error
+	m.levelMonitorConn, err = establishConnection(
+		m.levelMonitorPort,
+		fmt.Sprintf("%s:%d", m.remoteHost, m.remotePort),
 		5)
 	// If a meaningful connection could not be made, abort the monitor
 	if err != nil {
-		log.Printf("could not connect to osc server")
 		return
 	}
-	active := <-m.toggleLevelMonitor
 	for {
-		// Try to receive from channel
-		select {
-		case active = <-m.toggleLevelMonitor:
-		default:
-		}
-		if !active {
-			// If not active, wait to receive signal from channel
-			active = <-m.toggleLevelMonitor
-			continue
-		}
-		level, _ := getFader(conn, m.selectedCh) // ignore the error
+		level, _ := getFader(m.levelMonitorConn, m.selectedCh)
 		m.faders[m.selectedCh].level = level
 		msg <- m.faders[m.selectedCh].getLevelMessage()
-		time.Sleep(75 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
 func (m *mixer) setFaderResolution(newValue string) error {
-	// Check if FADER_RESOLUTION has changed
 	faderResText := strings.TrimSpace(newValue)
 	faderResInt, err := strconv.Atoi(faderResText)
 	if err != nil {
@@ -149,8 +143,8 @@ func (m *mixer) setFaderResolution(newValue string) error {
 
 func (m *mixer) connect() (err error) {
 	m.conn, err = establishConnection(
-		App.Preferences().Int("LPort"),
-		fmt.Sprintf("%s:%d", App.Preferences().String("RAddr"), App.Preferences().Int("RPort")),
+		m.localPort,
+		fmt.Sprintf("%s:%d", m.remoteHost, m.remotePort),
 		5)
 	return err
 }
@@ -176,26 +170,15 @@ func (m *mixer) getName(ch int) (string, error) {
 	namePath := getNamePath(ch)
 	// Create the OSC message
 	msg := osc.NewMessage(namePath)
-	// Pause the levelMonitor
-	m.toggleLevelMonitor <- false
 	// Make the inquiry
 	reply, err := osc.Inquire(m.conn, msg)
 	if err != nil {
 		return "", err
 	}
-	var s string
-	for _, arg := range reply.Arguments {
-		var ok bool
-		s, ok = arg.Decoded.(string)
-		if !ok {
-			log.Printf("not okay:\n")
-			log.Printf("reply packet: %s\n", reply.Packet.Bytes())
-			log.Printf("reply packet: %v\n", reply.Packet.Bytes())
-			s = ""
-		}
+	s, ok := reply.Arguments[0].Decoded.(string)
+	if !ok {
+		return "", fmt.Errorf("cannot get name")
 	}
-	// Resume the levelMonitor
-	m.toggleLevelMonitor <- true
 	return s, nil
 }
 
@@ -314,4 +297,11 @@ func getFader(conn net.Conn, channelID int) (level float32, err error) {
 	}
 
 	return level, err
+}
+
+func closeConnIfExists(conn net.Conn) {
+	if conn != nil {
+		conn.Close()
+		conn = nil
+	}
 }

@@ -88,6 +88,8 @@ func (h *homeScreen) setup() {
 	h.duration = setupLine("Duration: ", "2s", "")
 	// Set up the levelLabel which will show the fader level of the selected channel
 	h.levelLabel = setupStatusLine("")
+	// Start the levelLabel monitor to listen for messages
+	go h.levelLabel.monitor()
 	// Set up Fade To button
 	h.fadeTo = setupButtonLine("\nFade To(0.00 to 1.00): \n", h.fadeToPress, "1", "")
 	// Set up Fade Out button
@@ -98,8 +100,6 @@ func (h *homeScreen) setup() {
 	h.closeB = widget.NewButton("close", h.closeAppPress)
 	// Set up status line which will show the X32 information
 	h.status = setupStatusLine("Application Started")
-	// Start the levelLabel monitor to listen for messages
-	go h.levelLabel.monitor()
 	// Start the status monitor
 	go h.status.monitor()
 	// Setup the console
@@ -108,8 +108,6 @@ func (h *homeScreen) setup() {
 	go h.console.monitor()
 	// Set up the mixer with channel, dca, and bus send counts
 	h.mixer = newX32()
-	// Run the level monitor giving it the channel for the levelLabel
-	go h.mixer.levelMonitor(h.levelLabel.msg)
 	// Run the selected Channel monitor
 	go h.mixer.selChanMonitor()
 	// Set up the fader select button banks

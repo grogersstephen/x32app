@@ -68,7 +68,7 @@ func (h *homeScreen) fade(target float32) {
 
 func (h *homeScreen) connectPress() {
 	entry := widget.NewEntry()
-	entry.SetText(App.Preferences().String("RAddr"))
+	entry.SetText(App.Preferences().String("RHost"))
 	entry.SetPlaceHolder("Set remote ip address")
 	dialog.ShowForm(
 		"Connect to Mixing Console",
@@ -81,22 +81,27 @@ func (h *homeScreen) connectPress() {
 			if confirmConnect {
 				go func() {
 					// Close the current Conn if it exists
-					if h.mixer.conn != nil {
-						h.mixer.conn.Close()
-						h.mixer.conn = nil
-					}
+					closeConnIfExists(h.mixer.conn)
+
 					// Get ip address from entry
-					raddr := entry.Text
-					if !isValidIP(raddr) {
+					rhost := entry.Text
+					if !isValidIP(rhost) {
 						h.console.log <- "invalid ip address"
 						return
 					}
-					App.Preferences().SetString("RAddr", raddr)
+
+					// Set the fyne App preference
+					App.Preferences().SetString("RHost", rhost)
+
+					// Set the mixer property
+					h.mixer.remoteHost = rhost
+					// Make the connection
 					err := h.mixer.connect()
 					if err != nil {
 						h.mixer.conn = nil
 						h.console.log <- err.Error()
 					}
+					// Play loading animation while attempting connection
 					doneSignal := make(chan bool, 1)
 					loadingAnimation(h.console.log, doneSignal)
 					// Try to get status
@@ -113,8 +118,8 @@ func (h *homeScreen) connectPress() {
 					h.status.msg <- strings.Join(ss, " ")
 					// Rename buttons
 					h.renameChButtons()
-					// Start the level monitor
-					h.mixer.toggleLevelMonitor <- true
+					// Start levelMonitor
+					go h.mixer.levelMonitor(h.levelLabel.msg)
 				}()
 			}
 		},
@@ -133,6 +138,7 @@ func (h *homeScreen) renameChButtons() {
 }
 
 func (h *homeScreen) closeAppPress() {
+	h.mixer.levelMonitorConn.Close()
 	h.mixer.conn.Close()
 	os.Exit(1)
 }
