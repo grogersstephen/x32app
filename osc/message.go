@@ -10,12 +10,11 @@ import (
 type Message struct {
 	Packet    bytes.Buffer
 	Address   []byte
-	TypeTags  []byte
 	Arguments []argument
 }
 
 type argument struct {
-	Type    byte
+	TypeTag byte
 	Data    []byte
 	Decoded any
 }
@@ -39,18 +38,28 @@ func (msg *Message) MakePacket() (err error) {
 		return err
 	}
 
-	// If there are type tags, write them to the packet with a leading comma
-	if len(msg.TypeTags) > 0 {
-		_, err := msg.Packet.Write(
-			fixZeroBytes(prependByte(msg.TypeTags, byte(','))))
+	// If there are arguments, write the type tags to the packet with a leading comma
+	if len(msg.Arguments) > 0 {
+		err := msg.Packet.WriteByte(',')
 		if err != nil {
+			return err
+		}
+	}
+
+	for i := range msg.Arguments {
+		if i == 0 {
+			if err := msg.Packet.WriteByte(','); err != nil {
+				return err
+			}
+		}
+		if err := msg.Packet.WriteByte(msg.Arguments[i].TypeTag); err != nil {
 			return err
 		}
 	}
 
 	// For each argument, write to packet
 	for _, arg := range msg.Arguments {
-		switch arg.Type {
+		switch arg.TypeTag {
 		// String should be suffixed with correct count of zero bytes
 		case 's':
 			arg.Data = fixZeroBytes(arg.Data)
@@ -94,37 +103,27 @@ func (msg *Message) Add(l any) error {
 }
 
 func (msg *Message) AddString(s string) {
-	msg.TypeTags = append(msg.TypeTags, 's')
-
 	msg.Arguments = append(msg.Arguments,
 		argument{
-			Type:    's',
+			TypeTag: 's',
 			Data:    []byte(s),
 			Decoded: s})
 }
 
-func (msg *Message) AddInt(x int32) error {
-	msg.TypeTags = append(msg.TypeTags, 'i')
-
+func (msg *Message) AddInt(x int32) {
 	msg.Arguments = append(msg.Arguments,
 		argument{
-			Type:    'i',
+			TypeTag: 'i',
 			Data:    int32ToBytes(x),
 			Decoded: x})
-
-	return nil
 }
 
-func (msg *Message) AddFloat(x float32) error {
-	msg.TypeTags = append(msg.TypeTags, 'f')
-
+func (msg *Message) AddFloat(x float32) {
 	msg.Arguments = append(msg.Arguments,
 		argument{
-			Type:    'f',
+			TypeTag: 'f',
 			Data:    float32ToBytes(x),
 			Decoded: x})
-
-	return nil
 }
 
 func (msg *Message) ParseMessage() (err error) {
@@ -143,14 +142,19 @@ func (msg *Message) ParseMessage() (err error) {
 	//     which may have been read before the comma byte
 	msg.Address = trimZeroBytesRight(msg.Address)
 
-	// Read the typetag bytes until we hit a zero byte
-	msg.TypeTags, err = msg.Packet.ReadBytes(byte(0))
-	if err != nil {
-		return err
+	// For each type tag, append a new argument
+	var typeTag byte
+	for {
+		typeTag, err = msg.Packet.ReadByte()
+		if err != nil {
+			return err
+		}
+		// When we hit a zero byte, break the loop
+		if typeTag == byte(0) {
+			break
+		}
+		msg.Arguments = append(msg.Arguments, argument{TypeTag: typeTag})
 	}
-
-	// Remove the zero byte
-	msg.TypeTags = trimZeroBytesRight(msg.TypeTags)
 
 	// Unread the zero byte
 	msg.Packet.UnreadByte()
@@ -158,10 +162,10 @@ func (msg *Message) ParseMessage() (err error) {
 	// Skip the zero bytes which trail the typetags portion
 	//    Dont skip too many zero bytes
 	//     as some could be used in a following float32 osc argument
-	// Find the length of msg.TypeTags plus one (the removed comma)
+	// Find the length of msg.Arguments plus one (the removed comma)
 	// Find the number of zero bytes that should trail the type tags
 	// Skip those zero bytes
-	zerosToSkip := zeroBytesToAdd(len(msg.TypeTags) + 1)
+	zerosToSkip := zeroBytesToAdd(len(msg.Arguments) + 1)
 	_, err = msg.Packet.Read(make([]byte, zerosToSkip))
 	// Only return if the err is not io.EOF
 	if err != nil && !errors.Is(err, io.EOF) {
@@ -171,8 +175,8 @@ func (msg *Message) ParseMessage() (err error) {
 	// Continue to read the osc arguments using the type tags as a map
 	//     For each type tag:
 	//         read the following bytes and append to msg.Arguments
-	for _, typeTag := range msg.TypeTags {
-		switch typeTag {
+	for i := range msg.Arguments {
+		switch msg.Arguments[i].TypeTag {
 		case 'i', 'f':
 			// In the case of a float32 or int32, read 4 bytes
 			byt := make([]byte, 4)
@@ -180,20 +184,11 @@ func (msg *Message) ParseMessage() (err error) {
 			if err != nil {
 				return err
 			}
-			// Append the data as a []byte to msg.Arguments
-			msg.Arguments = append(msg.Arguments,
-				argument{
-					Type:    typeTag,
-					Data:    byt,
-					Decoded: decodeArgument(byt, typeTag)})
-			// Skip the next 4 bytes
-			//     as there should be zero padding between OSC arguments
-			// Create a new []byte... if we use the old one, it will overwrite msg.Arguments
-			zbyt := make([]byte, 4)
-			_, err = msg.Packet.Read(zbyt)
-			if err != nil {
-				return err
-			}
+
+			// Set the data and decoded data for each argument
+			msg.Arguments[i].Data = byt
+			msg.Arguments[i].Decoded = decodeArgument(byt, msg.Arguments[i].TypeTag)
+
 		case 's':
 			// In the case of a string, read until we hit a zero byte
 			byt, err := msg.Packet.ReadBytes(byte(0))
@@ -203,6 +198,7 @@ func (msg *Message) ParseMessage() (err error) {
 			if err != nil {
 				return err
 			}
+
 			// Unread the zero byte delimiter
 			err = msg.Packet.UnreadByte()
 			if err != nil {
@@ -210,18 +206,18 @@ func (msg *Message) ParseMessage() (err error) {
 			}
 			// Remove the written zero byte from b
 			byt = trimZeroBytesRight(byt)
-			// Append the string as a []byte to msg.Arguments
-			msg.Arguments = append(msg.Arguments,
-				argument{
-					Type:    typeTag,
-					Data:    byt,
-					Decoded: decodeArgument(byt, typeTag)})
+
+			// Set the data and decoded data for each argument
+			msg.Arguments[i].Data = byt
+			msg.Arguments[i].Decoded = decodeArgument(byt, msg.Arguments[i].TypeTag)
+
 			// Find the bytes to skip
 			zerosToSkip := make([]byte, zeroBytesToAdd(len(byt)))
 			_, err = msg.Packet.Read(zerosToSkip)
 			if err != nil {
 				return err
 			}
+
 		case 'b':
 			// blob is "an int32 size count, followed by that many 8-bit bytes of arbitrary binary data"
 			b := make([]byte, 4)
@@ -238,12 +234,11 @@ func (msg *Message) ParseMessage() (err error) {
 			if err != nil {
 				return err
 			}
-			// Append the data as a []byte to msg.Arguments
-			msg.Arguments = append(msg.Arguments,
-				argument{
-					Type:    typeTag,
-					Data:    data,
-					Decoded: nil})
+
+			// Set the data and decoded data for each argument
+			msg.Arguments[i].Data = data
+			msg.Arguments[i].Decoded = nil
+
 			// Find the bytes to skip
 			zerosToSkip := make([]byte, zeroBytesToAdd(len(data)))
 			_, err = msg.Packet.Read(zerosToSkip)
@@ -280,7 +275,7 @@ func decodeArgument(byt []byte, typeTag byte) any {
 func (msg *Message) DecodeArgument(i int) any {
 	// Return the argument decoded as a float32, int32 or string
 	//     when provided the index of the argument in the *Message
-	return decodeArgument(msg.Arguments[i].Data, msg.TypeTags[i])
+	return decodeArgument(msg.Arguments[i].Data, msg.Arguments[i].TypeTag)
 }
 
 func (msg *Message) DecodeArguments() {

@@ -60,3 +60,22 @@ func int32ToBytes(i int32) []byte {
 	binary.BigEndian.PutUint32(b[0:4], uint32(i))
 	return b
 }
+
+func byteToInt32(b []byte) int32 {
+	e := binary.BigEndian.Uint32(b[:])
+	return int32(e)
+}
+
+func byteToFloat32(b []byte) float32 {
+	e := binary.BigEndian.Uint32(b[:])
+	return math.Float32frombits(e)
+}
+
+func allElementsZero(b []byte) bool {
+	for i := 0; i < len(b); i++ {
+		if b[i] != 0 {
+			return false
+		}
+	}
+	return true
+}
