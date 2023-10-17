@@ -255,7 +255,7 @@ func (m *mixer) makeFade(channelID int, start, stop float32, fadeDuration time.D
 		// divide i by mixer.faderResolution to get a value on scale 0 - 1
 		v := float32(i) / m.faderResolution
 		// append the value to the osc.Message
-		msg.Add(v) // throw away error; type is guaranteed to be float32
+		msg.AddFloat(v)
 		err = msg.MakePacket()
 		if err != nil {
 			return err
