@@ -1,7 +1,6 @@
 package osc
 
 import (
-	"log"
 	"net"
 )
 
@@ -49,8 +48,6 @@ func Send(conn net.Conn, msg Message) error {
 		}
 	}
 
-	log.Printf("msg: %s\n", msg.Packet.Bytes())
-	log.Printf("msg: %v\n", msg.Packet.Bytes())
 	// Write the bytes to the connection
 	_, err := conn.Write(msg.Packet.Bytes())
 	return err

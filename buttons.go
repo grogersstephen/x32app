@@ -67,9 +67,11 @@ func (h *homeScreen) fade(target float32) {
 }
 
 func (h *homeScreen) connectPress() {
+	// Set up ui entry
 	entry := widget.NewEntry()
 	entry.SetText(App.Preferences().String("RHost"))
 	entry.SetPlaceHolder("Set remote ip address")
+	// Show Dialog
 	dialog.ShowForm(
 		"Connect to Mixing Console",
 		"Confirm",
