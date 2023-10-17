@@ -19,7 +19,7 @@ func Dial(localPort int, remoteAddr string) (conn net.Conn, err error) {
 func Inquire(conn net.Conn, msg Message) (reply Message, err error) {
 	// Takes a Conn and an osc Message
 	//   Sends the message to a server, and listens for a response
-	//   Returns the data in the response as a slice of any/interface
+	//   Returns the responding Message
 
 	// Send message
 	err = Send(conn, msg)
