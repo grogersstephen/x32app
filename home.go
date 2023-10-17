@@ -75,13 +75,6 @@ func (h *homeScreen) setupChannelBank() {
 	}
 }
 
-func (h *homeScreen) selChanMonitor() {
-	// When we receive from selectCh, we'll assign to mixer.selectedCh
-	for {
-		h.mixer.selectedCh = <-h.mixer.selectCh
-	}
-}
-
 // TODO: make settings page
 //     options:
 //          fader resolution
@@ -118,7 +111,7 @@ func (h *homeScreen) setup() {
 	// Run the level monitor giving it the channel for the levelLabel
 	go h.mixer.levelMonitor(h.levelLabel.msg)
 	// Run the selected Channel monitor
-	go h.selChanMonitor()
+	go h.mixer.selChanMonitor()
 	// Set up the fader select button banks
 	h.setupChannelBank()
 	h.setupDCABank()

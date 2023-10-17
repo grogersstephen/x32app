@@ -98,6 +98,13 @@ func establishConnection(localPort int, remoteAddr string, tries int) (conn net.
 	return conn, err
 }
 
+func (m *mixer) selChanMonitor() {
+	// When we receive from selectCh, we'll assign to mixer.selectedCh
+	for {
+		m.selectedCh = <-m.selectCh
+	}
+}
+
 func (m *mixer) levelMonitor(msg chan string) {
 	// This keeps up with the level of the currently selected channel
 	// Create a new connection just for the level monitor
