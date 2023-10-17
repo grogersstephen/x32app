@@ -82,26 +82,6 @@ func (msg *Message) MakePacket() (err error) {
 	return nil
 }
 
-func (msg *Message) Add(l any) error {
-	switch fmt.Sprintf("%T", l) {
-	case "int":
-		msg.AddInt(int32(l.(int)))
-	case "int32":
-		msg.AddInt(l.(int32))
-	case "int64":
-		msg.AddInt(int32(l.(int64)))
-	case "float32":
-		msg.AddFloat(l.(float32))
-	case "float64":
-		msg.AddFloat(float32(l.(float64)))
-	case "string":
-		msg.AddString(l.(string))
-	default:
-		return fmt.Errorf("Cannot determine type of argument")
-	}
-	return nil
-}
-
 func (msg *Message) AddString(s string) {
 	msg.Arguments = append(msg.Arguments,
 		argument{
