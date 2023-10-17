@@ -40,19 +40,12 @@ func (msg *Message) MakePacket() (err error) {
 
 	// If there are arguments, write the type tags to the packet with a leading comma
 	if len(msg.Arguments) > 0 {
-		err := msg.Packet.WriteByte(',')
-		if err != nil {
+		if err := msg.Packet.WriteByte(','); err != nil {
 			return err
 		}
 	}
-
-	for i := range msg.Arguments {
-		if i == 0 {
-			if err := msg.Packet.WriteByte(','); err != nil {
-				return err
-			}
-		}
-		if err := msg.Packet.WriteByte(msg.Arguments[i].TypeTag); err != nil {
+	for _, arg := range msg.Arguments {
+		if err := msg.Packet.WriteByte(arg.TypeTag); err != nil {
 			return err
 		}
 	}
@@ -109,8 +102,12 @@ func (msg *Message) AddFloat(x float32) {
 func (msg *Message) ParseMessage() (err error) {
 	// Parses an OSC message in the form of []byte into a message type as defined above
 
-	// Read into msg.Address until we hit the comma byte
+	// Read into msg.Address until the comma byte
 	msg.Address, err = msg.Packet.ReadBytes(byte(','))
+	// If EOF, return with no error
+	if err == io.EOF {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
