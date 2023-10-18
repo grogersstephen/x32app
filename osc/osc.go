@@ -32,8 +32,7 @@ func Inquire(conn net.Conn, msg Message) (reply Message, err error) {
 	if err != nil {
 		return reply, err
 	}
-	// Decode arguments
-	reply.DecodeArguments()
+
 	return reply, nil
 }
 
@@ -66,6 +65,7 @@ func Listen(conn net.Conn) (msg Message, err error) {
 	msg.Packet.Write(byt)
 
 	// Parse the []byte in msg.Packet and populate the properties of msg
+	//     The incoming arguments will be decoded in ParseMessage() method
 	err = msg.ParseMessage()
 
 	// Return msg

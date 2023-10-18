@@ -254,17 +254,3 @@ func decodeArgument(byt []byte, typeTag byte) any {
 	}
 	return nil
 }
-
-func (msg *Message) DecodeArgument(i int) any {
-	// Return the argument decoded as a float32, int32 or string
-	//     when provided the index of the argument in the *Message
-	return decodeArgument(msg.Arguments[i].Data, msg.Arguments[i].TypeTag)
-}
-
-func (msg *Message) DecodeArguments() {
-	// Decode all arguments as a float32, int32 or string
-	//     And assigns them to Message.ArgumentsDecoded
-	for i := range msg.Arguments {
-		msg.Arguments[i].Decoded = msg.DecodeArgument(i)
-	}
-}
