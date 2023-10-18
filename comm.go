@@ -43,8 +43,9 @@ func newX32() *mixer {
 	// dca's have no channel ids, so we will assign them:
 	//     72 - 79
 	faderCount := 80
+	// Initialize a mixer with defaults
 	m := &mixer{
-		name:             "Behringer M32",
+		name:             "Behringer X32",
 		remotePort:       10023,
 		localPort:        10023,
 		levelMonitorPort: 10024,
@@ -190,18 +191,47 @@ func (m *mixer) setName(ch int, name string) error {
 	return err
 }
 
-func (m *mixer) fadeTo(channel int, target float32, fadeDuration time.Duration) error {
+func (m *mixer) isInMotion(channelID int) bool {
+	// Tests to see if the fader of the given channelID is currently in motion
+	interval := 100 * time.Millisecond
+
+	// Test fader level twice
+	levelBefore, err := getFader(m.conn, channelID)
+	if err != nil {
+		return true // If the request fails, report fader to be in motion
+	}
+	time.Sleep(interval)
+	levelAfter, err := getFader(m.conn, channelID)
+	if err != nil {
+		return true
+	}
+
+	// If the levels are not equal, the fader is in motion
+	if levelBefore != levelAfter {
+		return true
+	}
+	return false
+}
+
+func (m *mixer) fadeTo(channelID int, target float32, fadeDuration time.Duration) error {
 	// Fade given channel
 	//     from its current level to the given target level
 	//     over the duration define by fadeDuration
 	//   The target should be a value between 0 and 1
+
+	if m.isInMotion(channelID) {
+		return fmt.Errorf("fader currently in motion")
+	}
+
 	// Get current level of the fader
-	currentLevel, err := m.getFader(channel)
+	currentLevel, err := m.getFader(channelID)
 	if err != nil {
 		return err
 	}
+
 	// Call mixer.makeFade
-	err = m.makeFade(channel, currentLevel, target, fadeDuration)
+	err = m.makeFade(channelID, currentLevel, target, fadeDuration)
+
 	return err
 }
 
