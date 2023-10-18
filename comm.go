@@ -305,12 +305,15 @@ func (m *mixer) makeFade(channelID int, start, stop float32, fadeDuration time.D
 	// Fire off the messages
 	var failureCount int // keep count of how many fail to send
 	for i := range oscMessages {
+		// Check killSig channel
 		select {
 		case <-m.faders[channelID].killSig:
 			return fmt.Errorf("fade interrupted")
 		default:
 		}
+		// Send message
 		osc.Send(m.conn, oscMessages[i])
+		// Count failures
 		switch err {
 		case nil:
 			failureCount = 0
