@@ -12,21 +12,23 @@ import (
 )
 
 type homeScreen struct {
-	title       *canvas.Text
-	connectB    *widget.Button
-	channelBank []*widget.Button
-	dcaBank     []*widget.Button
-	auxBank     []*widget.Button
-	duration    line
-	levelLabel  statusLine
-	fadeTo      buttonLine
-	fadeOutB    *widget.Button
-	renameChB   *widget.Button
-	closeB      *widget.Button
-	status      statusLine
-	console     console
-	mixer       *mixer
-	win         fyne.Window
+	title        *canvas.Text
+	connectB     *widget.Button
+	channelBank  []*widget.Button
+	dcaBank      []*widget.Button
+	auxBank      []*widget.Button
+	duration     line
+	levelLabel   statusLine
+	fadeTo       buttonLine
+	fadeOutB     *widget.Button
+	killCurrentB *widget.Button
+	killAllB     *widget.Button
+	renameChB    *widget.Button
+	closeB       *widget.Button
+	status       statusLine
+	console      console
+	mixer        *mixer
+	win          fyne.Window
 }
 
 func (h *homeScreen) setupDCABank() {
@@ -94,6 +96,10 @@ func (h *homeScreen) setup() {
 	h.fadeTo = setupButtonLine("\nFade To(0.00 to 1.00): \n", h.fadeToPress, "1", "")
 	// Set up Fade Out button
 	h.fadeOutB = widget.NewButton("\nFade Out\n", h.fadeOutPress)
+	// Set up Kill current button
+	h.killCurrentB = widget.NewButton("\nSTOPP\n", h.killCurrent)
+	// Set up Kill all button
+	h.killAllB = widget.NewButton("\nSTOP ALL\n", h.killall)
 	// Set up Rename Ch Button
 	h.renameChB = widget.NewButton("\nRename\n", h.renameChPress)
 	// Set up close button
@@ -150,7 +156,11 @@ func (h *homeScreen) getContent() *fyne.Container {
 				h.fadeTo.button,
 				h.fadeTo.entry,
 			),
-			h.fadeOutB,
+			container.NewGridWithColumns(2,
+				h.fadeOutB,
+				h.killCurrentB,
+			),
+			h.killAllB,
 			h.renameChB,
 			h.console.scroller,
 			container.NewGridWithColumns(2,

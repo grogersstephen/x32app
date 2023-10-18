@@ -28,6 +28,7 @@ type fader struct {
 	name      string
 	channel   int
 	channelID int
+	killSig   chan bool
 	level     float32
 }
 
@@ -51,7 +52,7 @@ func newX32() *mixer {
 		levelMonitorPort: 10024,
 		faders:           make([]*fader, faderCount),
 		selectedCh:       0,
-		selectCh:         make(chan int, 1),
+		selectCh:         make(chan int),
 		faderResolution:  1024,
 		conn:             nil,
 	}
@@ -78,6 +79,7 @@ func newX32() *mixer {
 			channelID: i,
 			name:      name,
 			channel:   channel,
+			killSig:   make(chan bool, 1),
 			level:     0,
 		}
 		channel++
@@ -213,6 +215,23 @@ func (m *mixer) isInMotion(channelID int) bool {
 	return false
 }
 
+func (m *mixer) killSwitch(channelIDs ...int) {
+	// Send enough kill signals to receive at all 'fader motion' goroutines
+	for _, id := range channelIDs {
+		ch := id
+		go func() {
+			for i := 0; i < 3; i++ {
+				select {
+				case m.faders[ch].killSig <- true:
+					return
+				default:
+					time.Sleep(20 * time.Millisecond)
+				}
+			}
+		}()
+	}
+}
+
 func (m *mixer) fadeTo(channelID int, target float32, fadeDuration time.Duration) error {
 	// Fade given channel
 	//     from its current level to the given target level
@@ -286,6 +305,11 @@ func (m *mixer) makeFade(channelID int, start, stop float32, fadeDuration time.D
 	// Fire off the messages
 	var failureCount int // keep count of how many fail to send
 	for i := range oscMessages {
+		select {
+		case <-m.faders[channelID].killSig:
+			return fmt.Errorf("fade interrupted")
+		default:
+		}
 		osc.Send(m.conn, oscMessages[i])
 		switch err {
 		case nil:

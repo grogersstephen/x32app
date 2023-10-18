@@ -11,6 +11,18 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
+func (h *homeScreen) killCurrent() {
+	h.mixer.killSwitch(h.mixer.selectedCh)
+}
+func (h *homeScreen) killall() {
+	faderCount := len(h.mixer.faders)
+	a := make([]int, faderCount)
+	for i := 0; i < faderCount; i++ {
+		a = append(a, i)
+	}
+	h.mixer.killSwitch(a...)
+}
+
 func (h *homeScreen) renameChPress() {
 	ch := h.mixer.selectedCh
 	fader := h.mixer.faders[ch]
