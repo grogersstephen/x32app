@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net"
 	"strconv"
 	"strings"
@@ -52,7 +53,7 @@ func newX32() *mixer {
 		levelMonitorPort: 10024,
 		faders:           make([]*fader, faderCount),
 		selectedCh:       0,
-		selectCh:         make(chan int),
+		selectCh:         make(chan int), // unbuffered
 		faderResolution:  1024,
 		conn:             nil,
 	}
@@ -79,7 +80,7 @@ func newX32() *mixer {
 			channelID: i,
 			name:      name,
 			channel:   channel,
-			killSig:   make(chan bool, 1),
+			killSig:   make(chan bool),
 			level:     0,
 		}
 		channel++
@@ -195,6 +196,7 @@ func (m *mixer) setName(ch int, name string) error {
 
 func (m *mixer) isInMotion(channelID int) bool {
 	// Tests to see if the fader of the given channelID is currently in motion
+	//     This test will return true even if another source is causing the motion
 	interval := 100 * time.Millisecond
 
 	// Test fader level twice
@@ -216,18 +218,19 @@ func (m *mixer) isInMotion(channelID int) bool {
 }
 
 func (m *mixer) killSwitch(channelIDs ...int) {
+	log.Printf("killSwitch called with chids: %v\n", channelIDs)
 	// Send enough kill signals to receive at all 'fader motion' goroutines
 	for _, id := range channelIDs {
 		ch := id
+		// Put each send on a goroutine
 		go func() {
-			for i := 0; i < 3; i++ {
-				select {
-				case m.faders[ch].killSig <- true:
-					return
-				default:
-					time.Sleep(20 * time.Millisecond)
-				}
-			}
+			// Timeout sender after 20 milliseconds
+			go func() {
+				time.Sleep(20 * time.Millisecond)
+				<-m.faders[ch].killSig // receive failed msg
+			}()
+			m.faders[ch].killSig <- true // send msg
+			return
 		}()
 	}
 }
@@ -303,7 +306,7 @@ func (m *mixer) makeFade(channelID int, start, stop float32, fadeDuration time.D
 	}
 
 	// Fire off the messages
-	var failureCount int // keep count of how many fail to send
+	var failureCount int // keep count of how many attempts fail to send
 	for i := range oscMessages {
 		// Check killSig channel
 		select {

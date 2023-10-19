@@ -99,7 +99,7 @@ func (h *homeScreen) setup() {
 	// Set up Kill current button
 	h.killCurrentB = widget.NewButton("\nSTOPP\n", h.killCurrent)
 	// Set up Kill all button
-	h.killAllB = widget.NewButton("\nSTOP ALL\n", h.killall)
+	h.killAllB = widget.NewButton("\nSTOP ALL\n", h.killAll)
 	// Set up Rename Ch Button
 	h.renameChB = widget.NewButton("\nRename\n", h.renameChPress)
 	// Set up close button
@@ -161,7 +161,7 @@ func (h *homeScreen) getContent() *fyne.Container {
 				h.killCurrentB,
 			),
 			h.killAllB,
-			h.renameChB,
+			//h.renameChB,
 			h.console.scroller,
 			container.NewGridWithColumns(2,
 				layout.NewSpacer(),

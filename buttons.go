@@ -14,11 +14,11 @@ import (
 func (h *homeScreen) killCurrent() {
 	h.mixer.killSwitch(h.mixer.selectedCh)
 }
-func (h *homeScreen) killall() {
+func (h *homeScreen) killAll() {
 	faderCount := len(h.mixer.faders)
 	a := make([]int, faderCount)
 	for i := 0; i < faderCount; i++ {
-		a = append(a, i)
+		a[i] = i
 	}
 	h.mixer.killSwitch(a...)
 }
@@ -130,10 +130,10 @@ func (h *homeScreen) connectPress() {
 					}
 					// Send the message to the console
 					h.status.msg <- strings.Join(ss, " ")
-					// Rename buttons
-					h.renameChButtons()
 					// Start levelMonitor
 					go h.mixer.levelMonitor(h.levelLabel.msg)
+					// Rename buttons
+					h.renameChButtons()
 				}()
 			}
 		},
