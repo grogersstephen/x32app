@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"net"
 	"strconv"
 	"strings"
@@ -29,7 +28,7 @@ type fader struct {
 	name      string
 	channel   int
 	channelID int
-	killSig   chan bool
+	active    bool // in active motion?
 	level     float32
 }
 
@@ -80,7 +79,7 @@ func newX32() *mixer {
 			channelID: i,
 			name:      name,
 			channel:   channel,
-			killSig:   make(chan bool),
+			active:    false,
 			level:     0,
 		}
 		channel++
@@ -89,7 +88,6 @@ func newX32() *mixer {
 }
 
 func establishConnection(localPort int, remoteAddr string, tries int) (conn net.Conn, err error) {
-	log.Printf("establishing connection: localPort: %v\n\t\t remoteAddr: %v\n", localPort, remoteAddr)
 	// Verify the validity of addresses and port numbers
 	if !isValidIP(fmt.Sprintf(":%d", localPort)) {
 		return nil, fmt.Errorf("invalid local port")
@@ -128,11 +126,9 @@ func (m *mixer) levelMonitor(msg chan string) {
 	if err != nil {
 		return
 	}
-	log.Printf("levelMonitor starting...")
 	for {
-		level, _ := getFader(m.levelMonitorConn, m.selectedCh)
-		m.faders[m.selectedCh].level = level
-		msg <- m.faders[m.selectedCh].getLevelMessage()
+		m.faders[m.selectedCh].getLevel(m.levelMonitorConn)
+		msg <- m.faders[m.selectedCh].levelMessage()
 		time.Sleep(10 * time.Millisecond)
 	}
 }
@@ -202,12 +198,14 @@ func (m *mixer) isInMotion(channelID int) bool {
 	interval := 100 * time.Millisecond
 
 	// Test fader level twice
-	levelBefore, err := getFader(m.conn, channelID)
+	levelBefore, err := m.faders[channelID].getLevel(m.conn)
 	if err != nil {
 		return true // If the request fails, report fader to be in motion
 	}
+	// Sleep
 	time.Sleep(interval)
-	levelAfter, err := getFader(m.conn, channelID)
+	// Test fader level again
+	levelAfter, err := m.faders[channelID].getLevel(m.conn)
 	if err != nil {
 		return true
 	}
@@ -219,28 +217,11 @@ func (m *mixer) isInMotion(channelID int) bool {
 	return false
 }
 
+// When run with all, it doesn't always kill the first ch
 func (m *mixer) killSwitch(channelIDs ...int) {
-	log.Printf("killSwitch called with chids: %v\n", channelIDs)
 	// Send enough kill signals to receive at all 'fader motion' goroutines
 	for _, id := range channelIDs {
-		ch := id
-		// Put each send on a goroutine
-		go func() {
-			// Timeout after 20 milliseconds
-			//     If a motion goroutine doesn't receive the killSig after the timeout, receive it here
-			//     If a motion goroutine does receive the killSig, select will go to default
-			go func() {
-				time.Sleep(20 * time.Millisecond)
-				select {
-				case <-m.faders[ch].killSig:
-					log.Printf("caught rogue killsig for ch: %v\n", ch)
-				default:
-					log.Printf("ending rogue kill receiver goroutine\n")
-				}
-			}()
-			m.faders[ch].killSig <- true // send msg
-			return
-		}()
+		m.faders[id].deactivate()
 	}
 }
 
@@ -249,14 +230,13 @@ func (m *mixer) fadeTo(channelID int, target float32, fadeDuration time.Duration
 	//     from its current level to the given target level
 	//     over the duration define by fadeDuration
 	//   The target should be a value between 0 and 1
-	log.Printf("fadeTo called: channel: %v target: %.2f, duratino: %v\n", channelID, target, fadeDuration)
 
 	if m.isInMotion(channelID) {
 		return fmt.Errorf("fader currently in motion")
 	}
 
 	// Get current level of the fader
-	currentLevel, err := m.getFader(channelID)
+	currentLevel, err := m.faders[channelID].getLevel(m.conn)
 	if err != nil {
 		return err
 	}
@@ -268,7 +248,6 @@ func (m *mixer) fadeTo(channelID int, target float32, fadeDuration time.Duration
 }
 
 func (m *mixer) makeFade(channelID int, start, stop float32, fadeDuration time.Duration) (err error) {
-	log.Printf("makeFade called with channel: %v start: %v stop: %v duration: %v\n", channelID, start, stop, fadeDuration)
 	// Send a series of osc messages to the mixer.conn
 	//     which cause the fader of the given channelID to fade from
 	//     the value indicated by start to the value indicated by stop
@@ -316,15 +295,15 @@ func (m *mixer) makeFade(channelID int, start, stop float32, fadeDuration time.D
 		oscMessages = append(oscMessages, msg)
 	}
 
+	// Set fader active flag
+	m.faders[channelID].activate()
+
 	// Fire off the messages
 	var failureCount int // keep count of how many attempts fail to send
 	for i := range oscMessages {
-		// Check killSig channel
-		select {
-		case <-m.faders[channelID].killSig:
-			log.Printf("fade interrupted: channelID: %v\n", channelID)
-			return fmt.Errorf("fade interrupted")
-		default:
+		// Check active status
+		if !m.faders[channelID].active {
+			return fmt.Errorf("fade on ch %d interrupted", channelID)
 		}
 		// Send message
 		osc.Send(m.conn, oscMessages[i])
@@ -336,39 +315,46 @@ func (m *mixer) makeFade(channelID int, start, stop float32, fadeDuration time.D
 			failureCount++
 		}
 		if failureCount > 9 { // too many failures in a row
+			m.faders[channelID].deactivate()
 			return fmt.Errorf("too many failures sending osc msg")
 		}
 		time.Sleep(delay) // sleep the calculated delay
 	}
 
+	m.faders[channelID].deactivate()
 	return nil
 }
 
-func (m *mixer) getFader(channelID int) (level float32, err error) {
-	return getFader(m.conn, channelID)
+func (f *fader) activate() {
+	f.active = true
+}
+func (f *fader) deactivate() {
+	f.active = false
 }
 
-func getFader(conn net.Conn, channelID int) (level float32, err error) {
-	// Return the level of the fader of given channelID 0 - 79
+func (f *fader) getLevel(conn net.Conn) (level float32, err error) {
+	// Return the level of the fader
 	// Check that connection is not nil
 	if conn == nil {
 		return level, fmt.Errorf("no connection made")
 	}
 
 	// Send the message
-	msg := osc.NewMessage(getFaderPath(channelID))
+	msg := osc.NewMessage(getFaderPath(f.channelID))
 	reply, err := osc.Inquire(conn, msg)
 	if err != nil {
 		return level, err
 	}
 
-	// Type check the first argument and assign to level
+	// Type check the first argument
 	level, ok := reply.Arguments[0].Decoded.(float32)
 	if !ok {
-		return level, fmt.Errorf("could not get fader level")
+		return level, fmt.Errorf("could not get fader %s %d level", f.name, f.channel)
 	}
 
-	return level, err
+	// Assign the level
+	f.level = level
+	return level, nil
 }
 
 func closeConnIfExists(conn net.Conn) {

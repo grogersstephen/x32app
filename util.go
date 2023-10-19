@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func (f *fader) getLevelMessage() string {
+func (f *fader) levelMessage() string {
 	msg := fmt.Sprintf("%s %d", f.name, f.channel)
 	if f.level < 0 {
 		return fmt.Sprintf("%s : ??", msg)
