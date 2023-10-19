@@ -89,6 +89,7 @@ func newX32() *mixer {
 }
 
 func establishConnection(localPort int, remoteAddr string, tries int) (conn net.Conn, err error) {
+	log.Printf("establishing connection: localPort: %v\n\t\t remoteAddr: %v\n", localPort, remoteAddr)
 	// Verify the validity of addresses and port numbers
 	if !isValidIP(fmt.Sprintf(":%d", localPort)) {
 		return nil, fmt.Errorf("invalid local port")
@@ -127,6 +128,7 @@ func (m *mixer) levelMonitor(msg chan string) {
 	if err != nil {
 		return
 	}
+	log.Printf("levelMonitor starting...")
 	for {
 		level, _ := getFader(m.levelMonitorConn, m.selectedCh)
 		m.faders[m.selectedCh].level = level
@@ -224,10 +226,17 @@ func (m *mixer) killSwitch(channelIDs ...int) {
 		ch := id
 		// Put each send on a goroutine
 		go func() {
-			// Timeout sender after 20 milliseconds
+			// Timeout after 20 milliseconds
+			//     If a motion goroutine doesn't receive the killSig after the timeout, receive it here
+			//     If a motion goroutine does receive the killSig, select will go to default
 			go func() {
 				time.Sleep(20 * time.Millisecond)
-				<-m.faders[ch].killSig // receive failed msg
+				select {
+				case <-m.faders[ch].killSig:
+					log.Printf("caught rogue killsig for ch: %v\n", ch)
+				default:
+					log.Printf("ending rogue kill receiver goroutine\n")
+				}
 			}()
 			m.faders[ch].killSig <- true // send msg
 			return
@@ -240,6 +249,7 @@ func (m *mixer) fadeTo(channelID int, target float32, fadeDuration time.Duration
 	//     from its current level to the given target level
 	//     over the duration define by fadeDuration
 	//   The target should be a value between 0 and 1
+	log.Printf("fadeTo called: channel: %v target: %.2f, duratino: %v\n", channelID, target, fadeDuration)
 
 	if m.isInMotion(channelID) {
 		return fmt.Errorf("fader currently in motion")
@@ -258,6 +268,7 @@ func (m *mixer) fadeTo(channelID int, target float32, fadeDuration time.Duration
 }
 
 func (m *mixer) makeFade(channelID int, start, stop float32, fadeDuration time.Duration) (err error) {
+	log.Printf("makeFade called with channel: %v start: %v stop: %v duration: %v\n", channelID, start, stop, fadeDuration)
 	// Send a series of osc messages to the mixer.conn
 	//     which cause the fader of the given channelID to fade from
 	//     the value indicated by start to the value indicated by stop
@@ -311,6 +322,7 @@ func (m *mixer) makeFade(channelID int, start, stop float32, fadeDuration time.D
 		// Check killSig channel
 		select {
 		case <-m.faders[channelID].killSig:
+			log.Printf("fade interrupted: channelID: %v\n", channelID)
 			return fmt.Errorf("fade interrupted")
 		default:
 		}
