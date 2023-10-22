@@ -11,17 +11,22 @@ import (
 )
 
 type mixer struct {
-	name             string
-	remoteHost       string
-	remotePort       int
-	localPort        int
-	levelMonitorPort int
-	faders           []*fader
-	selectedCh       int
-	selectCh         chan int
-	faderResolution  float32
-	conn             net.Conn
-	levelMonitorConn net.Conn
+	name            string
+	remoteHost      string
+	remotePort      int
+	localPort       int
+	faders          []*fader
+	selectedCh      int
+	selectCh        chan int
+	faderResolution float32
+	conn            net.Conn
+	monitor         *levelMonitor
+}
+
+type levelMonitor struct {
+	localPort int
+	conn      net.Conn
+	updatedAt time.Time
 }
 
 type fader struct {
@@ -46,15 +51,15 @@ func newX32() *mixer {
 	faderCount := 80
 	// Initialize a mixer with defaults
 	m := &mixer{
-		name:             "Behringer X32",
-		remotePort:       10023,
-		localPort:        10023,
-		levelMonitorPort: 10024,
-		faders:           make([]*fader, faderCount),
-		selectedCh:       0,
-		selectCh:         make(chan int), // unbuffered
-		faderResolution:  1024,
-		conn:             nil,
+		name:            "Behringer X32",
+		remoteHost:      "",
+		remotePort:      10023,
+		localPort:       10023,
+		faders:          make([]*fader, faderCount),
+		selectedCh:      0,
+		selectCh:        make(chan int), // unbuffered
+		faderResolution: 1024,
+		conn:            nil,
 	}
 	channelIDMap := map[int]string{
 		0:  "channel",
@@ -113,13 +118,14 @@ func (m *mixer) selChanMonitor() {
 	}
 }
 
-func (m *mixer) levelMonitor(msg chan string) {
+func (m *mixer) monitorLevels(msg chan string) {
 	// This keeps up with the level of the currently selected channel
+	//     Updates msg with label of the channel and its level
 	// Create a new connection just for the level monitor
 	// Wait until we start a main connection
 	var err error
-	m.levelMonitorConn, err = establishConnection(
-		m.levelMonitorPort,
+	m.monitor.conn, err = establishConnection(
+		m.monitor.localPort,
 		fmt.Sprintf("%s:%d", m.remoteHost, m.remotePort),
 		5)
 	// If a meaningful connection could not be made, abort the monitor
@@ -127,10 +133,16 @@ func (m *mixer) levelMonitor(msg chan string) {
 		return
 	}
 	for {
-		m.faders[m.selectedCh].getLevel(m.levelMonitorConn)
+		m.faders[m.selectedCh].getLevel(m.monitor.conn)
 		msg <- m.faders[m.selectedCh].levelMessage()
-		time.Sleep(10 * time.Millisecond)
+		m.monitor.updatedAt = time.Now()
+		time.Sleep(42 * time.Millisecond) // a 41.6667ms interval is equivalent to 24hz
 	}
+}
+
+func (m *mixer) isMonitorActive() bool {
+	// time since monitor.updatedAt was updated is less than a second
+	return time.Since(m.monitor.updatedAt) < time.Second
 }
 
 func (m *mixer) setFaderResolution(newValue string) error {
@@ -333,14 +345,22 @@ func (f *fader) deactivate() {
 }
 
 func (f *fader) getLevel(conn net.Conn) (level float32, err error) {
-	// Return the level of the fader
-	// Check that connection is not nil
+	level, err = getFaderLevel(f.channelID, conn)
+
+	// Assign the level
+	f.level = level
+
+	return level, nil
+}
+func getFaderLevel(channelID int, conn net.Conn) (level float32, err error) {
+	// Return the level of the given channel's fader
+	// Check that the connection is not nil
 	if conn == nil {
 		return level, fmt.Errorf("no connection made")
 	}
 
 	// Send the message
-	msg := osc.NewMessage(getFaderPath(f.channelID))
+	msg := osc.NewMessage(getFaderPath(channelID))
 	reply, err := osc.Inquire(conn, msg)
 	if err != nil {
 		return level, err
@@ -349,11 +369,9 @@ func (f *fader) getLevel(conn net.Conn) (level float32, err error) {
 	// Type check the first argument
 	level, ok := reply.Arguments[0].Decoded.(float32)
 	if !ok {
-		return level, fmt.Errorf("could not get fader %s %d level", f.name, f.channel)
+		return level, fmt.Errorf("could not get fader channelID %d level", channelID)
 	}
 
-	// Assign the level
-	f.level = level
 	return level, nil
 }
 
