@@ -62,52 +62,32 @@ func setupEntry(s, p string) *widget.Entry {
 	return e
 }
 
-func setupStatusLine(s string) statusLine {
-	var status statusLine
-	status.label = setupLabel(s)
-	status.msg = make(chan string, 1)
-	return status
-}
-
+/*
 type console struct {
 	scroller *container.Scroll
 	label    *widget.Label
 	log      chan string
 }
+*/
 
-func setupConsole(s string) console {
-	var c console
-	c.label = setupLabel("")
-	c.scroller = container.NewVScroll(c.label)
-	c.log = make(chan string, 1)
+type console struct {
+	widget.Label
+	scroller *container.Scroll
+}
+
+func newConsole(s string) *console {
+	c := &console{}
+	c.ExtendBaseWidget(c)
+	c.SetText(s)
+	c.scroller = container.NewVScroll(c)
 	return c
 }
 
-func (c *console) monitor() {
-	for {
-		message := <-c.log
-		if message == "clr" {
-			c.label.SetText("")
-			continue
-		}
-		c.label.SetText(c.label.Text + "\n" + message)
-		c.scroller.ScrollToBottom()
+func (c *console) log(s string) {
+	if s == "clr" {
+		c.SetText("")
+		return
 	}
-}
-
-func (c *console) logf(text string) {
-	c.label.SetText(c.label.Text + text)
+	c.SetText(c.Text + "\n" + s)
 	c.scroller.ScrollToBottom()
-}
-
-type statusLine struct {
-	label *widget.Label
-	msg   chan string
-}
-
-func (s *statusLine) monitor() {
-	for {
-		message := <-s.msg
-		s.label.SetText(message)
-	}
 }

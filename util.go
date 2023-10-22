@@ -110,7 +110,7 @@ func getDist(x, y int) int {
 	return x - y
 }
 
-func loadingAnimation(console chan string, doneSignal chan bool) {
+func loadingAnimation(consoleOut func(s string), doneSignal chan bool) {
 	// Start loading animation
 	go func() {
 		for i := 1; i > 0; i++ {
@@ -122,8 +122,8 @@ func loadingAnimation(console chan string, doneSignal chan bool) {
 				return
 			default:
 			}
-			console <- "clr"
-			console <- cs
+			consoleOut("clr")
+			consoleOut(cs)
 		}
 	}()
 }

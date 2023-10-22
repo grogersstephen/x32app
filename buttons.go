@@ -39,7 +39,7 @@ func (h *homeScreen) renameChPress() {
 				go func() {
 					err := h.mixer.setName(ch, entry.Text)
 					if err != nil {
-						h.console.log <- err.Error()
+						h.console.log(err.Error())
 					}
 					h.renameChButtons()
 				}()
@@ -53,7 +53,7 @@ func (h *homeScreen) fadeToPress() {
 	target, err := strconv.ParseFloat(h.fadeTo.entry.Text, 32)
 	targetF := float32(target)
 	if err != nil {
-		h.console.log <- err.Error()
+		h.console.log(err.Error())
 		return
 	}
 	go h.fade(targetF)
@@ -67,14 +67,14 @@ func (h *homeScreen) fade(target float32) {
 	// Parse duration from field
 	duration, err := time.ParseDuration(h.duration.entry.Text)
 	if err != nil {
-		h.console.log <- err.Error()
+		h.console.log(err.Error())
 		return
 	}
 
 	// fade to target
 	err = h.mixer.fadeTo(h.mixer.selectedCh, target, duration)
 	if err != nil {
-		h.console.log <- err.Error()
+		h.console.log(err.Error())
 	}
 }
 
@@ -100,7 +100,7 @@ func (h *homeScreen) connectPress() {
 					// Get ip address from entry
 					rhost := entry.Text
 					if !isValidIP(rhost) {
-						h.console.log <- "invalid ip address"
+						h.console.log("invalid ip address")
 						return
 					}
 
@@ -113,7 +113,7 @@ func (h *homeScreen) connectPress() {
 					err := h.mixer.connect()
 					if err != nil {
 						h.mixer.conn = nil
-						h.console.log <- err.Error()
+						h.console.log(err.Error())
 					}
 					// Play loading animation while attempting connection
 					doneSignal := make(chan bool, 1)
@@ -121,17 +121,17 @@ func (h *homeScreen) connectPress() {
 					// Try to get status
 					ss, err := h.mixer.getStatus()
 					doneSignal <- true
-					h.console.log <- "clr"
+					h.console.log("clr")
 					if err != nil {
 						h.mixer.conn = nil
-						h.console.log <- "bad connection"
-						h.console.log <- err.Error()
+						h.console.log("bad connection")
+						h.console.log(err.Error())
 						return
 					}
 					// Send the message to the console
-					h.status.msg <- strings.Join(ss, " ")
+					h.status.SetText(strings.Join(ss, " "))
 					// Start levelMonitor
-					go h.mixer.monitorLevels(h.levelLabel.msg)
+					go h.mixer.monitorLevels(h.levelLabel.SetText)
 					// Rename buttons
 					h.renameChButtons()
 				}()

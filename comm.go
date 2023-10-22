@@ -58,6 +58,11 @@ func newX32() *mixer {
 		selectedCh:      0,
 		faderResolution: 1024,
 		conn:            nil,
+		monitor: &levelMonitor{
+			localPort: 10024,
+			conn:      nil,
+			updatedAt: time.Now(),
+		},
 	}
 	channelIDMap := map[int]string{
 		0:  "channel",
@@ -109,7 +114,7 @@ func establishConnection(localPort int, remoteAddr string, tries int) (conn net.
 	return conn, err
 }
 
-func (m *mixer) monitorLevels(msg chan string) {
+func (m *mixer) monitorLevels(levelLog func(s string)) {
 	// This keeps up with the level of the currently selected channel
 	//     Updates msg with label of the channel and its level
 	// Create a new connection just for the level monitor
@@ -124,8 +129,9 @@ func (m *mixer) monitorLevels(msg chan string) {
 		return
 	}
 	for {
+		fmt.Printf("m.selectedCh: %v\n", m.selectedCh)
 		m.faders[m.selectedCh].getLevel(m.monitor.conn)
-		msg <- m.faders[m.selectedCh].levelMessage()
+		levelLog(m.faders[m.selectedCh].levelMessage())
 		m.monitor.updatedAt = time.Now()
 		time.Sleep(42 * time.Millisecond) // a 41.6667ms interval is equivalent to 24hz
 	}

@@ -18,15 +18,15 @@ type homeScreen struct {
 	dcaBank      []*widget.Button
 	auxBank      []*widget.Button
 	duration     line
-	levelLabel   statusLine
+	levelLabel   *widget.Label
 	fadeTo       buttonLine
 	fadeOutB     *widget.Button
 	killCurrentB *widget.Button
 	killAllB     *widget.Button
 	renameChB    *widget.Button
 	closeB       *widget.Button
-	status       statusLine
-	console      console
+	status       *widget.Label
+	console      *console
 	mixer        *mixer
 	win          fyne.Window
 }
@@ -69,6 +69,7 @@ func (h *homeScreen) setupChannelBank() {
 		button := widget.NewButton(
 			fmt.Sprintf("%02d", i+1),
 			func() {
+				fmt.Printf("channelID clicked: %v\n", channelID)
 				h.mixer.selectedCh = channelID
 			},
 		)
@@ -89,9 +90,7 @@ func (h *homeScreen) setup() {
 	// Set up the duration elements, label and entry
 	h.duration = setupLine("Duration: ", "2s", "")
 	// Set up the levelLabel which will show the fader level of the selected channel
-	h.levelLabel = setupStatusLine("")
-	// Start the levelLabel monitor to listen for messages
-	go h.levelLabel.monitor()
+	h.levelLabel = widget.NewLabel("")
 	// Set up Fade To button
 	h.fadeTo = setupButtonLine("\nFade To(0.00 to 1.00): \n", h.fadeToPress, "1", "")
 	// Set up Fade Out button
@@ -105,13 +104,9 @@ func (h *homeScreen) setup() {
 	// Set up close button
 	h.closeB = widget.NewButton("close", h.closeAppPress)
 	// Set up status line which will show the X32 information
-	h.status = setupStatusLine("Application Started")
-	// Start the status monitor
-	go h.status.monitor()
+	h.status = widget.NewLabel("Application Started")
 	// Setup the console
-	h.console = setupConsole("")
-	// Start the console monitor
-	go h.console.monitor()
+	h.console = newConsole("")
 	// Set up the mixer with channel, dca, and bus send counts
 	h.mixer = newX32()
 	// Set up the fader select button banks
@@ -125,12 +120,12 @@ func (h *homeScreen) setup() {
 }
 
 func (h *homeScreen) getContent() *fyne.Container {
-	h.console.log <- ""
+	h.console.log("")
 	content :=
 		container.New(layout.NewVBoxLayout(),
 			h.title,
 			h.connectB,
-			h.status.label,
+			h.status,
 			container.NewGridWithColumns(8,
 				h.channelBank[0], h.channelBank[1], h.channelBank[2], h.channelBank[3],
 				h.channelBank[4], h.channelBank[5], h.channelBank[6], h.channelBank[7],
@@ -144,7 +139,7 @@ func (h *homeScreen) getContent() *fyne.Container {
 				h.auxBank[4], h.auxBank[5], h.auxBank[6], h.auxBank[7],
 			),
 			container.NewGridWithColumns(1,
-				h.levelLabel.label,
+				h.levelLabel,
 				container.NewGridWithColumns(2,
 					h.duration.label,
 					h.duration.entry,
