@@ -131,7 +131,7 @@ func (h *homeScreen) connectPress() {
 					// Send the message to the console
 					h.status.msg <- strings.Join(ss, " ")
 					// Start levelMonitor
-					go h.mixer.levelMonitor(h.levelLabel.msg)
+					go h.mixer.monitorLevels(h.levelLabel.msg)
 					// Rename buttons
 					h.renameChButtons()
 				}()
@@ -152,7 +152,7 @@ func (h *homeScreen) renameChButtons() {
 }
 
 func (h *homeScreen) closeAppPress() {
-	h.mixer.levelMonitorConn.Close()
+	h.mixer.monitor.conn.Close()
 	h.mixer.conn.Close()
 	os.Exit(1)
 }

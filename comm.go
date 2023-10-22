@@ -17,7 +17,6 @@ type mixer struct {
 	localPort       int
 	faders          []*fader
 	selectedCh      int
-	selectCh        chan int
 	faderResolution float32
 	conn            net.Conn
 	monitor         *levelMonitor
@@ -57,7 +56,6 @@ func newX32() *mixer {
 		localPort:       10023,
 		faders:          make([]*fader, faderCount),
 		selectedCh:      0,
-		selectCh:        make(chan int), // unbuffered
 		faderResolution: 1024,
 		conn:            nil,
 	}
@@ -109,13 +107,6 @@ func establishConnection(localPort int, remoteAddr string, tries int) (conn net.
 		time.Sleep(250 * time.Millisecond)
 	}
 	return conn, err
-}
-
-func (m *mixer) selChanMonitor() {
-	// When we receive from selectCh, we'll assign to mixer.selectedCh
-	for {
-		m.selectedCh = <-m.selectCh
-	}
 }
 
 func (m *mixer) monitorLevels(msg chan string) {

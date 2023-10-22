@@ -39,7 +39,7 @@ func (h *homeScreen) setupDCABank() {
 		button := widget.NewButton(
 			fmt.Sprintf("DCA%d", i+1),
 			func() {
-				h.mixer.selectCh <- channelID
+				h.mixer.selectedCh = channelID
 			},
 		)
 		// Add our button to the bank
@@ -54,7 +54,7 @@ func (h *homeScreen) setupAUXBank() {
 		button := widget.NewButton(
 			fmt.Sprintf("AUX%d", i+1),
 			func() {
-				h.mixer.selectCh <- channelID
+				h.mixer.selectedCh = channelID
 			},
 		)
 		h.auxBank[i] = button
@@ -69,7 +69,7 @@ func (h *homeScreen) setupChannelBank() {
 		button := widget.NewButton(
 			fmt.Sprintf("%02d", i+1),
 			func() {
-				h.mixer.selectCh <- channelID
+				h.mixer.selectedCh = channelID
 			},
 		)
 		// Add our button to the bank
@@ -114,8 +114,6 @@ func (h *homeScreen) setup() {
 	go h.console.monitor()
 	// Set up the mixer with channel, dca, and bus send counts
 	h.mixer = newX32()
-	// Run the selected Channel monitor
-	go h.mixer.selChanMonitor()
 	// Set up the fader select button banks
 	h.setupChannelBank()
 	h.setupDCABank()
