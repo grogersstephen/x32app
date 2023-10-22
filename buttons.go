@@ -114,6 +114,7 @@ func (h *homeScreen) connectPress() {
 					if err != nil {
 						h.mixer.conn = nil
 						h.console.log(err.Error())
+						return
 					}
 					// Play loading animation while attempting connection
 					doneSignal := make(chan bool, 1)

@@ -130,6 +130,7 @@ func (m *mixer) monitorLevels(levelLog func(s string)) {
 	}
 	for {
 		fmt.Printf("m.selectedCh: %v\n", m.selectedCh)
+		// the following getLevel() is blocking, should be on goroutine?
 		m.faders[m.selectedCh].getLevel(m.monitor.conn)
 		levelLog(m.faders[m.selectedCh].levelMessage())
 		m.monitor.updatedAt = time.Now()
@@ -243,6 +244,9 @@ func (f *fader) deactivate() {
 
 func (f *fader) getLevel(conn net.Conn) (level float32, err error) {
 	level, err = getFaderLevel(f.channelID, conn)
+	if err != nil {
+		return level, err
+	}
 
 	// Assign the level
 	f.level = level
@@ -270,6 +274,31 @@ func getFaderLevel(channelID int, conn net.Conn) (level float32, err error) {
 	}
 
 	return level, nil
+}
+func (f *fader) subLevel(conn net.Conn, levelOut func(s string)) error {
+	// This will only be valid for 10 seconds
+	// Check that the conn is not nil
+	if conn == nil {
+		return fmt.Errorf("no connection made")
+	}
+	// Make message to send
+	msg := osc.NewMessage("/subscribe")
+	msg.AddString(getFaderPath(f.channelID))
+	// Send the message
+	for {
+		reply, err := osc.Listen(conn)
+		if err != nil {
+			return err
+		}
+		level, ok := reply.Arguments[0].Decoded.(float32)
+		if !ok {
+			return fmt.Errorf("incoming value cannot be parsed as float")
+		}
+		// Assign the level
+		f.level = level
+		//
+		levelOut(fmt.Sprintf("%.2f", f.level))
+	}
 }
 
 func closeConnIfExists(conn net.Conn) {
